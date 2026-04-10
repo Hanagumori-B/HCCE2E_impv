@@ -31,23 +31,23 @@ class PatchPnPNet(nn.Module):
         self.features = nn.Sequential( # input 128 x 128
             nn.Conv2d(in_channels, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
             nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.LeakyReLU(0.1, True),
+            nn.GELU(),
             # 64 x 64
             nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
             nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.LeakyReLU(0.1, True),
+            nn.GELU(),
             # 32 x 32
             nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
             nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.LeakyReLU(0.1, True),
+            nn.GELU(),
             # 16 x 16
             nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
             nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.LeakyReLU(0.1, True),
+            nn.GELU(),
             # 8 x 8
             nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=1, padding=1, bias=False),
             nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.LeakyReLU(0.1, True),
+            nn.GELU(),
             # 8 x 8
         )
 

@@ -171,11 +171,11 @@ if __name__ == '__main__':
 
     DDP 训练：  
     screen -S train_ddp
-    nohup python -u -m torch.distributed.launch --nproc_per_node 2 /root/xxxxxx/s4_p2_train_bf_pbr.py > log4.file 2>&1 &
+    PYTHONPATH=. python -u -m torch.distributed.launch --nproc_per_node 2 /root/xxxxxx/s4_p2_train_bf_pbr.py
     python 前可通过`CUDA_VISIBLE_DEVICES=1`指定使用显卡的序号
     
     单卡训练：
-    nohup python -u /root/xxxxxx/s4_p2_train_bf_pbr.py > log4.file 2>&1 &
+    PYTHONPATH=. python -u /root/xxxxxx/s4_p2_train_bf_pbr.py
     '''
     
     # 调试nan
