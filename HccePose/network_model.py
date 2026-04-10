@@ -146,13 +146,13 @@ class HccePose_Loss(nn.Module):
             # Back_L1Loss_v = Back_L1Loss_v.mean([0,2,3])
             # Back_L1Loss_v = torch.sum(Back_L1Loss_v*weight_back_error_ratio)/torch.sum(weight_back_error_ratio)
             
-            Front_L1Loss_v = self.Front_L1Loss(pred_front[:, k*8:(k+1)*8]*target_mask.clone(),(gt_front[:, k*8:(k+1)*8] *2 -1)*target_mask.clone())
+            Front_L1Loss_v = self.Front_L1Loss(pred_front[:, k*8:(k+1)*8]*target_mask.clone(),(gt_front[:, k*8:(k+1)*8] *2 -1)*target_mask)
             Front_L1Loss_v = Front_L1Loss_v.mean([0,2,3])
-            Front_L1Loss_v = torch.sum(Front_L1Loss_v*weight_front_error_ratio)/torch.sum(weight_front_error_ratio)
+            Front_L1Loss_v = torch.sum(Front_L1Loss_v*weight_front_error_ratio)/(torch.sum(weight_front_error_ratio) + 1e-7)
         
-            Back_L1Loss_v = self.Back_L1Loss(pred_back[:, k*8:(k+1)*8]*target_mask.clone(),(gt_back[:, k*8:(k+1)*8] *2 -1)*target_mask.clone())
+            Back_L1Loss_v = self.Back_L1Loss(pred_back[:, k*8:(k+1)*8]*target_mask.clone(),(gt_back[:, k*8:(k+1)*8] *2 -1)*target_mask)
             Back_L1Loss_v = Back_L1Loss_v.mean([0,2,3])
-            Back_L1Loss_v = torch.sum(Back_L1Loss_v*weight_back_error_ratio)/torch.sum(weight_back_error_ratio)
+            Back_L1Loss_v = torch.sum(Back_L1Loss_v*weight_back_error_ratio)/(torch.sum(weight_back_error_ratio) + 1e-7)
 
             Front_L1Loss_v_l.append(Front_L1Loss_v[None])
             Back_L1Loss_v_l.append(Back_L1Loss_v[None])
@@ -417,8 +417,8 @@ class HccePose_PatchPnP_Loss(HccePose_Loss):
         
         gt_f_permuted = gt_front.permute(0, 2, 3, 1)
         gt_b_permuted = gt_back.permute(0, 2, 3, 1)
-        gt_coords_f = net_ref.hcce_decode(gt_f_permuted).permute(0, 3, 1, 2) / 255.0
-        gt_coords_b = net_ref.hcce_decode(gt_b_permuted).permute(0, 3, 1, 2) / 255.0
+        gt_coords_f = net_ref.hcce_decode(gt_f_permuted).permute(0, 3, 1, 2).detach() / 255.0
+        gt_coords_b = net_ref.hcce_decode(gt_b_permuted).permute(0, 3, 1, 2).detach() / 255.0
         target_mask = gt_mask.float()
         if target_mask.dim() == 3:
             target_mask = target_mask.unsqueeze(1)

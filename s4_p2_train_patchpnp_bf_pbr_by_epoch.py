@@ -33,6 +33,7 @@ def test(obj_ply,
          world_size,
          device=None,
          writer=None,
+         epoch=0,
          ):
     net.eval()
     local_add_list = []
@@ -109,9 +110,9 @@ def test(obj_ply,
                 mask_comparison = torch.cat([img_vis, gt_m_3c, pred_m_3c], dim=2)
                 front_comparison = torch.cat([img_vis, gt_front_vis, pred_front], dim=2)
                 back_comparison = torch.cat([img_vis, gt_back_vis, pred_back], dim=2)
-                writer.add_image('Visual/Mask_Comparison', mask_comparison, global_step=0)
-                writer.add_image('Visual/Front_Comparison', front_comparison, global_step=0)
-                writer.add_image('Visual/Back_Comparison', back_comparison, global_step=0)
+                writer.add_image('Visual/Mask_Comparison', mask_comparison, global_step=epoch)
+                writer.add_image('Visual/Front_Comparison', front_comparison, global_step=epoch)
+                writer.add_image('Visual/Back_Comparison', back_comparison, global_step=epoch)
                 # print("GT F Min:", gt_front_vis.min().item())
                 # print("GT F Max:", gt_front_vis.max().item())
                 # print("Pred F Min:", pred_front.min().item())
@@ -177,7 +178,9 @@ if __name__ == '__main__':
     nohup python -u /root/xxxxxx/s4_p2_train_bf_pbr.py > log4.file 2>&1 &
     '''
     
-    # TODO: 用test的代码去跑train的数据集,检查accuracy和loss的情况; 保证训练和验证中关于EProPnP的代码相同.
+    # 调试nan
+    detect_nan = False
+    torch.autograd.set_detect_anomaly(detect_nan) 
     
     ide_debug = False
     
@@ -197,7 +200,8 @@ if __name__ == '__main__':
     # `start_obj_id` is the starting object ID, and `end_obj_id` is the ending object ID.
     # 训练的物体 ID 范围。  
     # `start_obj_id` 为起始物体 ID，`end_obj_id` 为终止物体 ID。
-    obj_id_list = [1, 2, 3, 4, 5]
+    obj_id_list = [1]
+    # obj_id_list = [1, 2, 3, 4, 5]
     
     # 主干网络类型
     net_name = 'convnext'
@@ -230,7 +234,7 @@ if __name__ == '__main__':
     # Whether to enable load_breakpoint.
     # 是否启用 load_breakpoint 加载断点。
     load_breakpoint = False
-    manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-08_18:05:47'
+    manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-09_21:16:47'
     
     # 配置学习率衰减
     warmup_epochs = 3
@@ -623,9 +627,29 @@ if __name__ == '__main__':
                         current_factors['pm_r_loss'] * current_loss['pm_r_loss'],
                     ] 
                     loss = torch.stack(l_l).sum()
-                    
-                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_grad)
                 
+                if not detect_nan:
+                    nan_found = torch.isnan(loss) or torch.isinf(loss)
+                    nan_flag = torch.tensor([int(nan_found)], device=loss.device)
+
+                    if not ide_debug:
+                        dist.all_reduce(nan_flag, op=dist.ReduceOp.SUM)
+
+                    if nan_flag.item() > 0:
+                        optimizer.zero_grad(set_to_none=True) # 清空梯度
+                        for m in net.module.modules():
+                            if isinstance(m, torch.nn.BatchNorm2d):
+                                m.reset_running_stats()
+                        optimizer.zero_grad(set_to_none=True)
+                        for m in (net.module.modules() if not ide_debug else net.modules()):
+                            if isinstance(m, torch.nn.BatchNorm2d):
+                                m.reset_running_stats()
+                        del loss, current_loss, pred_mask, pred_code, pred_rot_6d 
+                        torch.cuda.empty_cache() # 强制清理显存碎片
+                        scaler.update()
+                        scheduler.step()
+                        continue
+                    
                 if args.local_rank == 0:
                     # 记录各个分项 Loss
                     if batch_idx % log_interval == 0 and (logs_done_this_epoch < log_freq_per_epoch - 1) or batch_idx == num_batches - 1:
@@ -652,26 +676,18 @@ if __name__ == '__main__':
                     pbar.set_postfix({
                         "Total Loss": f"{loss.item():.4f}"
                     })
-                scheduler.step()
+                
                 scaler.scale(loss).backward()
+                scaler.unscale_(optimizer) 
+                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_grad)
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
+                scheduler.step() 
                 
                 iteration_step = iteration_step + 1
                 
-                if not ide_debug:
-                    torch.distributed.barrier()  
-                    nan_flag = torch.tensor([int(torch.isnan(loss).any())], device=loss.device)
-                    dist.all_reduce(nan_flag, op=dist.ReduceOp.SUM)
-                    if nan_flag.item() > 0:
-                        for m in net.module.modules():
-                            if isinstance(m, torch.nn.BatchNorm2d):
-                                m.reset_running_stats()
-                        scheduler.step()
-                        scaler.scale(loss).backward()
-                        optimizer.zero_grad(set_to_none=True)
-                        continue
+                
                 
             # 验证
             if isinstance(net, torch.nn.parallel.DataParallel):
@@ -691,7 +707,8 @@ if __name__ == '__main__':
                 local_rank=args.local_rank, 
                 world_size=world_size if not ide_debug else 1,
                 device='cuda:'+CUDA_DEVICE,
-                writer=writer
+                writer=writer,
+                epoch=epoch * log_freq_per_epoch + log_freq_per_epoch - 1
                 )
             if args.local_rank == 0 and output_save: 
                 writer.add_scalar('Test/ADD-S_Accuracy', max_acc, epoch * log_freq_per_epoch + log_freq_per_epoch - 1)

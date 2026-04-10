@@ -31,7 +31,7 @@ def cross_product(u, v):
     return out
 
 
-def rot6d_to_mat_batch(d6):
+def rot6d_to_mat_batch(d6, eps=1e-6):
     """
     Converts 6D rotation representation by Zhou et al. [1] to rotation matrix.
     Args:
@@ -42,13 +42,16 @@ def rot6d_to_mat_batch(d6):
     On the Continuity of Rotation Representations in Neural Networks. CVPR 2019.
     Retrieved from http://arxiv.org/abs/1812.07035
     """
+    # 发现这里产生nan，增加保护
     # poses
     x_raw = d6[..., 0:3]  # bx3
     y_raw = d6[..., 3:6]  # bx3
 
-    x = F.normalize(x_raw, p=2, dim=-1)  # bx3
+    # x = F.normalize(x_raw, p=2, dim=-1)  # bx3
+    x = x_raw / (torch.norm(x_raw, p=2, dim=-1, keepdim=True) + eps)
     z = torch.cross(x, y_raw, dim=-1)  # bx3
-    z = F.normalize(z, p=2, dim=-1)  # bx3
+    # z = F.normalize(z, p=2, dim=-1)  # bx3
+    z = z / (torch.norm(z, p=2, dim=-1, keepdim=True) + eps)
     y = torch.cross(z, x, dim=-1)  # bx3
 
     # (*,3)x3 --> (*,3,3)
