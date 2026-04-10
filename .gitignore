@@ -8,7 +8,7 @@ show_vis/
 test_imgs/
 test_videos/
 ztest/
-**/__pycache__/
+__pycache__/
 
 s4_p3_*.py
 s4_check.py
