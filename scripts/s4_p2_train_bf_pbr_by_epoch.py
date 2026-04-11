@@ -11,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import yaml
 from HccePose.bop_loader import BopDataset, TrainBopDatasetBFEPro, TestBopDatasetBFEPro
-from HccePose.network_model import HccePose_EPro_Net, HccePose_EPro_Loss, load_checkpoint, save_checkpoint, save_best_checkpoint
+from HccePose.network_model import HccePose_BF_Net, HccePose_Loss, load_checkpoint, save_checkpoint, save_best_checkpoint
 # from torch.cuda.amp import autocast as autocast
 from torch.amp import GradScaler
 from torch import optim
@@ -28,7 +28,7 @@ from epropnp.common import evaluate_pnp
 
 def test_ransac(obj_ply,
                 obj_info, 
-                net: HccePose_EPro_Net, 
+                net: HccePose_BF_Net, 
                 test_loader: torch.utils.data.DataLoader,
                 local_rank,
                 world_size,
@@ -214,8 +214,8 @@ if __name__ == '__main__':
     # 训练的物体 ID 范围。  
     # `start_obj_id` 为起始物体 ID，`end_obj_id` 为终止物体 ID。
     # start_obj_id = 2
-    # obj_id_list = [1, 2, 3, 4, 5]
-    obj_id_list = [4, 5]
+    obj_id_list = [1, 2, 3, 4, 5]
+    # obj_id_list = [4, 5]
     
     # 主干网络类型
     # net_name = 'convnext'
@@ -231,7 +231,7 @@ if __name__ == '__main__':
     
     # Number of samples per training epoch.
     # 每轮训练的样本数量。
-    batch_size = 30
+    batch_size = 32
     
     # Number of worker processes used by the DataLoader.
     # DataLoader 的进程数量。
@@ -365,15 +365,15 @@ if __name__ == '__main__':
         
         # Define the loss function and neural network.
         # 定义损失函数和神经网络。
-        loss_net = HccePose_EPro_Loss(r_loss=True, t_loss=True)
+        loss_net = HccePose_Loss()
         scaler = GradScaler()
-        net = HccePose_EPro_Net(
+        net = HccePose_BF_Net(
                 net = net_name,
                 input_channels = 3, 
                 min_xyz = min_xyz,
                 size_xyz = size_xyz,
             )
-        net_test = HccePose_EPro_Net(
+        net_test = HccePose_BF_Net(
                 net = net_name,
                 input_channels = 3, 
                 min_xyz = min_xyz,
@@ -553,41 +553,24 @@ if __name__ == '__main__':
                     cam_R_m2c = cam_R_m2c.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     cam_t_m2c = cam_t_m2c.to('cuda:'+CUDA_DEVICE, non_blocking=True).squeeze(-1)
                     
-                try:
-                    with torch.autocast(device_type='cuda', dtype=torch.float16):
-                        pred_mask, pred_code, w2d, scale = net(rgb_c)
+                with torch.autocast(device_type='cuda', dtype=torch.float16):
+                    pred_mask, pred_code = net(rgb_c)
 
-                        current_loss = loss_net.hcce_loss(
-                            pred_code[:, :24], pred_code[:, 24:], pred_mask, 
-                            GT_Front_hcce, GT_Back_hcce, mask_vis_c
-                        )
-                        # 构造空的位姿 loss 占位，保持字典结构一致
-                        
-                        l_l = [
+                    current_loss = loss_net(
+                        pred_code[:, :24], pred_code[:, 24:], pred_mask, 
+                        GT_Front_hcce, GT_Back_hcce, mask_vis_c
+                    )
+                    # 构造空的位姿 loss 占位，保持字典结构一致
+                    
+                    l_l = [
                         loss_factors['Front_L1Losses'] * torch.sum(current_loss['Front_L1Losses']),
                         loss_factors['Back_L1Losses'] * torch.sum(current_loss['Back_L1Losses']),
                         loss_factors['mask_loss'] * current_loss['mask_loss'],
-                        ] 
-                        
-                        loss = torch.stack(l_l).sum()
-                
-                except Exception as e:
-                    print(f"[Rank {dist.get_rank()}] Warning: PnP solver or distribution failed. Error: {e}")
-                    batch_failed = torch.tensor([1], device=rgb_c.device)
-                    loss = torch.tensor(0.0, device=rgb_c.device, requires_grad=True)
-                    if not ide_debug:
-                        dist.all_reduce(batch_failed, op=dist.ReduceOp.SUM)
-                    if batch_failed.item() > 0:
-                        torch.distributed.barrier()  
-                        nan_flag = torch.tensor([int(torch.isnan(loss).any())], device=loss.device)
-                        dist.all_reduce(nan_flag, op=dist.ReduceOp.SUM)
-                        if nan_flag.item() > 0:
-                            for m in net.model.modules():
-                                if isinstance(m, torch.nn.BatchNorm2d):
-                                    m.reset_running_stats()
-                            continue
+                    ] 
                     
-                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_grad)
+                    loss = torch.stack(l_l).sum()
+                    
+                
                 
                 if args.local_rank == 0:
                     if batch_idx % log_interval == 0 and (logs_done_this_epoch < log_freq_per_epoch - 1) or batch_idx == num_batches - 1:
@@ -607,12 +590,14 @@ if __name__ == '__main__':
                     # 实时显示Loss到进度条后缀
                     pbar.set_postfix({"Tot": f"{loss.item():.4f}"})
                 
-                scheduler.step()
+                
                 scaler.scale(loss).backward()
+                scaler.unscale_(optimizer) 
+                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_grad)
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
-                
+                scheduler.step()
                 # torch.cuda.empty_cache()
                 
                 iteration_step = iteration_step + 1

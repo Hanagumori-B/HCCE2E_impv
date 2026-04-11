@@ -311,12 +311,18 @@ class DeepLabV3(nn.Module):
 
     def forward(self, x):
         # (x has shape (batch_size, 3, h, w))
-        if self.efficientnet_key == None:
+        if not self.efficientnet_key:
             x_high_feature, x_128, x_64, x_32, x_16 = self.resnet(x)
-            output, neck_out_features = self.aspp(x_high_feature, x_128, x_64, x_32, x_16)
+            if self.return_features:
+                output, neck_out_features = self.aspp(x_high_feature, x_128, x_64, x_32, x_16)
+            else:
+                output = self.aspp(x_high_feature, x_128, x_64, x_32, x_16)
         else:
             l9,l3,l2 = self.efficientnet(x)
-            output, neck_out_features = self.aspp(l9,l3,l2)
+            if self.return_features:
+                output, neck_out_features = self.aspp(l9,l3,l2)
+            else:
+                output = self.aspp(l9,l3,l2)
         mask,binary_code = torch.split(output,[1,self.num_classes-1],1)
         if self.return_features:
             return mask, binary_code, neck_out_features
