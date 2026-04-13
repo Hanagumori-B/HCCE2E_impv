@@ -5,6 +5,31 @@ from ..tools.dropblock import DropBlock2D, LinearScheduler
 from mmengine.model import normal_init, constant_init
 
 
+class PnPTransformer(nn.Module):
+    def __init__(self, feat_dim, num_heads=8, dropout=0.05):
+        super().__init__()
+        self.attention = nn.MultiheadAttention(feat_dim, num_heads, dropout, batch_first=True)
+        self.norm1 = nn.LayerNorm(feat_dim)
+        
+        self.ffn = nn.Sequential(
+            nn.Linear(feat_dim, feat_dim * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(feat_dim * 4, feat_dim)
+        )
+        self.norm2 = nn.LayerNorm(feat_dim)
+        
+    def forward(self, x):
+        norm_x = self.norm1(x)
+        attn_out, _ = self.attention(norm_x, norm_x, norm_x)
+        x = x + attn_out
+        
+        norm_x2 = self.norm2(x)
+        ffn_out = self.ffn(norm_x2)
+        x = x + ffn_out
+        return x
+
+
 class PatchPnPNet(nn.Module):
     def __init__(self, 
                  in_channels, 
@@ -51,16 +76,18 @@ class PatchPnPNet(nn.Module):
             # 8 x 8
         )
 
-        self.flatten_dim = feat_dim * 8 * 8
-        self.mlp = nn.Sequential(
-            nn.Linear(self.flatten_dim, 1024),
-            nn.ReLU(inplace=True),
-            nn.Linear(1024, 256),
-            nn.ReLU(inplace=True)
-        )
+        # self.flatten_dim = feat_dim * 8 * 8
+        # self.mlp = nn.Sequential(
+        #     nn.Linear(self.flatten_dim, 1024),
+        #     nn.ReLU(inplace=True),
+        #     nn.Linear(1024, 256),
+        #     nn.ReLU(inplace=True)
+        # )
 
-        self.fc_r = nn.Linear(256, rot_dim) # 6D Rotation
-        self.fc_t = nn.Linear(256, 3)       # t_size = (delta_x, delta_y, delta_z)
+        self.pnp_transformer = PnPTransformer(feat_dim, 8)
+
+        self.fc_r = nn.Linear(feat_dim, rot_dim) # 6D Rotation
+        self.fc_t = nn.Linear(feat_dim, 3)       # t_size = (delta_x, delta_y, delta_z)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -101,9 +128,12 @@ class PatchPnPNet(nn.Module):
                 x = self.dropblock(x)
                 
         x = self.features(x)
-        x = x.flatten(1)
-        x = self.mlp(x)
-        
+        # x = x.flatten(1)
+        # # x = self.mlp(x)
+        B, C, H, W = x.shape
+        x = x.view(B, C, H * W).permute(0, 2, 1)
+        x = self.pnp_transformer(x)
+        x = x.mean(dim=1)
         rot_6d = self.fc_r(x)
         t_site = self.fc_t(x)
         
