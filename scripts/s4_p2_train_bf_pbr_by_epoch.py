@@ -214,8 +214,8 @@ if __name__ == '__main__':
     # 训练的物体 ID 范围。  
     # `start_obj_id` 为起始物体 ID，`end_obj_id` 为终止物体 ID。
     # start_obj_id = 2
-    obj_id_list = [1, 2, 3, 4, 5]
-    # obj_id_list = [4, 5]
+    # obj_id_list = [1, 2, 3, 4, 5]
+    obj_id_list = [4, 5]
     
     # 主干网络类型
     # net_name = 'convnext'
@@ -223,7 +223,7 @@ if __name__ == '__main__':
     
     # Total number of training batches.
     # 总训练批次。
-    total_epochs = 60
+    total_epochs = 65
     
     # Learning rate.
     # 学习率。

@@ -12,7 +12,7 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import yaml
-from HccePose.bop_loader import BopDataset, TrainBopDatasetBFEPro, TestBopDatasetBFEPro
+from HccePose.bop_loader import BopDataset, TrainBopDatasetBF_PnPNet, TestBopDatasetBF_PnPNet
 from HccePose.network_model import HccePose_PatchPnP_Net, HccePose_PatchPnP_Loss, load_checkpoint, save_checkpoint, save_best_checkpoint
 # from torch.cuda.amp import autocast as autocast
 from torch.amp import GradScaler
@@ -39,7 +39,7 @@ def test(obj_ply,
     local_add_list = []
     local_aad_list = []
     disable_tqdm = (local_rank != 0)
-    for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_K_B, cam_R_m2c, cam_t_m2c) in tqdm(
+    for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, img_size, cam_R_m2c, cam_t_m2c) in tqdm(
         enumerate(test_loader), total=len(test_loader), desc='Validation', postfix='<' * 10, disable=disable_tqdm):
         if torch.cuda.is_available():
             rgb_c=rgb_c.to(device, non_blocking=True)
@@ -48,9 +48,10 @@ def test(obj_ply,
             GT_Back_hcce = GT_Back_hcce.to(device, non_blocking=True)
             Bbox = Bbox.to(device, non_blocking=True)
             cam_K = cam_K.to(device, non_blocking=True)
+            img_size = img_size.to(device, non_blocking=True)
         with torch.no_grad(): 
             with torch.autocast(device_type='cuda', dtype=torch.float16):
-                pred_results = net.inference_batch(rgb_c, cam_K, Bbox)
+                pred_results = net.inference_batch(rgb_c, cam_K, Bbox, img_size)
                 pred_rot = rot6d_to_mat_batch(pred_results['pred_rot_6d'])
                 pred_t = pred_results['pred_trans']
                 
@@ -208,7 +209,7 @@ if __name__ == '__main__':
     
     # Total number of training batches.
     # 总训练批次。
-    total_epochs = 80
+    total_epochs = 65
     
     # Learning rate.
     # 学习率。
@@ -237,7 +238,7 @@ if __name__ == '__main__':
     manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-09_21:16:47'
     
     # 配置学习率衰减
-    warmup_epochs = 3
+    warmup_epochs = 5
     
     # 备份存储位置
     output_save = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/'
@@ -250,9 +251,9 @@ if __name__ == '__main__':
         'mask_loss': 1.0,
         'coord_front_loss': 1.0,
         'coord_back_loss': 1.0,
-        'center_loss': 1.5,
-        'z_loss': 1.5,
-        'pm_r_loss': 1.5,
+        'center_loss': 2.0,
+        'z_loss': 3.0,
+        'pm_r_loss': 2.0,
         # 'r_loss': 0.0,
     }
     
@@ -290,11 +291,11 @@ if __name__ == '__main__':
     # np.random.seed(local_rank)
     
     bop_dataset_item = BopDataset(dataset_path, local_rank=local_rank)
-    train_bop_dataset_back_front_item = TrainBopDatasetBFEPro(bop_dataset_item, train_folder_name, padding_ratio=padding_ratio)
+    train_bop_dataset_back_front_item = TrainBopDatasetBF_PnPNet(bop_dataset_item, train_folder_name, padding_ratio=padding_ratio)
     
     # ratio = 0.1 means selecting 10% of samples from the dataset for testing.
     # ratio = 0.1 表示从数据集中选择 10% 的样本作为测试数据。
-    test_bop_dataset_back_front_item = TestBopDatasetBFEPro(bop_dataset_item, val_folder_name, padding_ratio=padding_ratio, ratio=1.0)
+    test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(bop_dataset_item, val_folder_name, padding_ratio=padding_ratio, ratio=1.0)
         
     for obj_id in obj_id_list:
         obj_path = bop_dataset_item.obj_model_list[bop_dataset_item.obj_id_list.index(obj_id)]
@@ -422,72 +423,64 @@ if __name__ == '__main__':
         
         # scheduler
         iter_per_epoch = len(train_loader)
-        # hold_epochs = 5
-        # scheduler_warmup = torch.optim.lr_scheduler.LinearLR(
-        #     optimizer, 
-        #     start_factor=0.01, 
-        #     end_factor=1.0, 
-        #     total_iters=warmup_epochs * iter_per_epoch
-        # )
-        # scheduler_hold = torch.optim.lr_scheduler.LinearLR(
-        #     optimizer, 
-        #     start_factor=1.0, 
-        #     end_factor=1.0, 
-        #     total_iters=hold_epochs * iter_per_epoch
-        # )
-        # scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     optimizer, 
-        #     T_max=(total_epochs - warmup_epochs - hold_epochs) * iter_per_epoch, 
-        #     eta_min=1e-6
-        # )
-        # scheduler = torch.optim.lr_scheduler.SequentialLR(
-        #     optimizer, 
-        #     schedulers=[scheduler_warmup, 
-        #                 scheduler_hold,
-        #                 scheduler_cosine,
-        #                 ], 
-        #     milestones=[warmup_epochs * iter_per_epoch,
-        #                 (warmup_epochs + hold_epochs) * iter_per_epoch,
-        #                 ]
-        # )
-        
-        def get_asynchronous_lr_lambdas():
-            min_factor = 0.01 # 最终都降到初始值的 1% (即 1e-6 和 3e-6)
-
-            # 规则 A：Backbone 的快退火
-            warmup_iters = warmup_epochs * iter_per_epoch
-            backbone_cool_iters = total_epochs * iter_per_epoch // 3 * 2
-            total_iters = total_epochs * iter_per_epoch
-            def backbone_lambda(iter):
-                if iter < warmup_iters:
-                    # 线性 Warmup: 0.01 -> 1.0
-                    return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
-                elif iter < backbone_cool_iters:
-                    # 余弦退火: 1.0 -> 0.01
-                    progress = (iter - warmup_iters) / (backbone_cool_iters - warmup_iters)
-                    cos_out = (1 + math.cos(math.pi * progress)) / 2
-                    return min_factor + (1.0 - min_factor) * cos_out
-                else:
-                    # 彻底冷却，保持在 1% (1e-6) 锁定坐标图
-                    return min_factor
-
-            # 规则 B：PatchPnP 的慢退火
-            def pnp_lambda(iter):
-                if iter < warmup_iters:
-                    # 线性 Warmup
-                    return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
-                else:
-                    # 余弦退火
-                    progress = (iter - warmup_iters) / (total_iters - warmup_iters)
-                    cos_out = (1 + math.cos(math.pi * progress)) / 2
-                    return min_factor + (1.0 - min_factor) * cos_out
-            return[backbone_lambda, pnp_lambda]
-
-        # 挂载调度器
-        scheduler = torch.optim.lr_scheduler.LambdaLR(
+        scheduler_warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer, 
-            lr_lambda=get_asynchronous_lr_lambdas()
+            start_factor=0.01, 
+            end_factor=1.0, 
+            total_iters=warmup_epochs * iter_per_epoch
         )
+        scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, 
+            T_max=(total_epochs - warmup_epochs) * iter_per_epoch, 
+            eta_min=1e-6
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, 
+            schedulers=[
+                scheduler_warmup, 
+                scheduler_cosine,
+                ], 
+            milestones=[warmup_epochs * iter_per_epoch,]
+        )
+        
+        # def get_asynchronous_lr_lambdas():
+        #     min_factor = 0.01 # 最终都降到初始值的 1% (即 1e-6 和 3e-6)
+
+        #     # 规则 A：Backbone 的快退火
+        #     warmup_iters = warmup_epochs * iter_per_epoch
+        #     # backbone_cool_iters = total_epochs * iter_per_epoch // 3 * 2
+        #     total_iters = total_epochs * iter_per_epoch
+        #     backbone_cool_iters = total_iters
+        #     def backbone_lambda(iter):
+        #         if iter < warmup_iters:
+        #             # 线性 Warmup: 0.01 -> 1.0
+        #             return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
+        #         elif iter < backbone_cool_iters:
+        #             # 余弦退火: 1.0 -> 0.01
+        #             progress = (iter - warmup_iters) / (backbone_cool_iters - warmup_iters)
+        #             cos_out = (1 + math.cos(math.pi * progress)) / 2
+        #             return min_factor + (1.0 - min_factor) * cos_out
+        #         else:
+        #             # 彻底冷却，保持在 1% (1e-6) 锁定坐标图
+        #             return min_factor
+
+        #     # 规则 B：PatchPnP 的慢退火
+        #     def pnp_lambda(iter):
+        #         if iter < warmup_iters:
+        #             # 线性 Warmup
+        #             return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
+        #         else:
+        #             # 余弦退火
+        #             progress = (iter - warmup_iters) / (total_iters - warmup_iters)
+        #             cos_out = (1 + math.cos(math.pi * progress)) / 2
+        #             return min_factor + (1.0 - min_factor) * cos_out
+        #     return[backbone_lambda, pnp_lambda]
+
+        # # 挂载调度器
+        # scheduler = torch.optim.lr_scheduler.LambdaLR(
+        #     optimizer, 
+        #     lr_lambda=get_asynchronous_lr_lambdas()
+        # )
 
     
 
@@ -581,7 +574,7 @@ if __name__ == '__main__':
             log_interval = max(num_batches // log_freq_per_epoch, 1) # 每隔 10% 的进度记录一次
             logs_done_this_epoch = 0
                 
-            for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, bbox, cam_K, cam_K_B, cam_R_m2c, cam_t_m2c) in enumerate(train_loader):
+            for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, bbox, cam_K, img_size, cam_R_m2c, cam_t_m2c) in enumerate(train_loader):
                 B = rgb_c.shape[0]
                 if torch.cuda.is_available():
                     rgb_c=rgb_c.to('cuda:'+CUDA_DEVICE, non_blocking = True)
@@ -590,14 +583,14 @@ if __name__ == '__main__':
                     GT_Back_hcce = GT_Back_hcce.to('cuda:'+CUDA_DEVICE, non_blocking = True)
                     bbox = bbox.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     cam_K = cam_K.to('cuda:'+CUDA_DEVICE, non_blocking=True)
-                    cam_K_B = cam_K_B.to('cuda:'+CUDA_DEVICE, non_blocking=True)
+                    img_size = img_size.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     cam_R_m2c = cam_R_m2c.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     cam_t_m2c = cam_t_m2c.to('cuda:'+CUDA_DEVICE, non_blocking=True).squeeze(-1)
                     
                     gt_t_site = trans_to_site_batch(cam_t_m2c, cam_K, bbox)
 
                 with torch.autocast(device_type='cuda', dtype=torch.float16):
-                    pred_mask, pred_code, pred_rot_6d, pred_t_site, pred_coords_f, pred_coords_b = net(rgb_c, bbox)
+                    pred_mask, pred_code, pred_rot_6d, pred_t_site, pred_coords_f, pred_coords_b = net(rgb_c, bbox, img_size)
                 with torch.autocast(device_type='cuda', enabled=False):
                     current_factors = copy.copy(loss_factors)
                     

@@ -696,7 +696,7 @@ class HccePose_PatchPnP_Net(HccePose_BF_Net):
         )
         self.fb_type = fb_type
 
-    def forward(self, inputs, Bbox):
+    def forward(self, inputs, Bbox, img_sz):
         """
         inputs: [B, 3, H, W] 图像
         """
@@ -724,8 +724,8 @@ class HccePose_PatchPnP_Net(HccePose_BF_Net):
             indexing='ij'
         )
         coord2d = torch.stack([grid_x, grid_y], dim=0).unsqueeze(0).repeat(B, 1, 1, 1)
-        coord2d[:, 0, :, :] = coord2d[:, 0, :, :] * Bbox[:, 2, None, None] + Bbox[:, 0, None, None]
-        coord2d[:, 1, :, :] = coord2d[:, 1, :, :] * Bbox[:, 3, None, None] + Bbox[:, 1, None, None]
+        coord2d[:, 0, :, :] = (coord2d[:, 0, :, :] * Bbox[:, 2, None, None] + Bbox[:, 0, None, None]) / img_sz[:, 1, None, None]
+        coord2d[:, 1, :, :] = (coord2d[:, 1, :, :] * Bbox[:, 3, None, None] + Bbox[:, 1, None, None]) / img_sz[:, 0, None, None]
         # [B, 8, H, W]
         pnp_input = torch.cat([pnp_input, coord2d], dim=1)
         
@@ -743,9 +743,9 @@ class HccePose_PatchPnP_Net(HccePose_BF_Net):
         return pred_mask_logits, pred_codes_logits, pred_rot_6d, pred_t_site, norm_coords_f, norm_coords_b
         
 
-    def inference_batch(self, inputs, cam_K, Bbox, s_zoom=128.0, thershold=0.5):
+    def inference_batch(self, inputs, cam_K, Bbox, img_sz, s_zoom=128.0, thershold=0.5):
         # 推理时除了调用基类的解码，还需要返回 PnP 结果
-        pred_mask, pred_front_back_code, pred_rot_6d, pred_t_site, pred_front_code, pred_back_code = self.forward(inputs, Bbox)
+        pred_mask, pred_front_back_code, pred_rot_6d, pred_t_site, pred_front_code, pred_back_code = self.forward(inputs, Bbox, img_sz)
         pred_trans = site_to_trans_batch(pred_t_site, cam_K, Bbox, s_zoom)
         
         # 获取基础的 HCCE 解码结果（用于可视化）

@@ -1462,4 +1462,60 @@ class TestBopDatasetBFEPro(TestBopDatasetBackFront):
             return rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_K_B, cam_R_m2c, cam_t_m2c
         else: 
             return rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_K_B, cam_R_m2c, cam_t_m2c, scene, image, score 
+ 
+
+class TrainBopDatasetBF_PnPNet(TrainBopDatasetBackFront):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         
+    def __getitem__(self, index):
+        info_ = self.dataset_info['obj_info']['obj_%s'%str(self.current_obj_id).rjust(6, '0')][index]
+        rgb = cv2.imread(info_['rgb'])
+        img_size = rgb.shape[:2] # [h, w]
+        mask_vis = cv2.imread(info_['mask_visib_path'], 0)
+        label_image_name = os.path.basename(info_['mask_path']).split('.')[0]
+        front_label_image_path = os.path.join(self.target_dir_front, info_['scene'], label_image_name + '.png')
+        back_label_image_path = os.path.join(self.target_dir_back, info_['scene'], label_image_name + '.png')
+        GT_Front = cv2.imread(front_label_image_path)
+        GT_Back = cv2.imread(back_label_image_path)
+        if GT_Front is None: GT_Front = np.zeros((self.crop_size_gt, self.crop_size_gt, 3))
+        if GT_Back is None: GT_Back = np.zeros((self.crop_size_gt, self.crop_size_gt, 3))
+        if self.aug_op == 'imgaug': rgb = self.apply_augmentation(rgb)
+        Bbox = aug_square_fp32(np.array(info_['bbox_visib']), rgb.shape, padding_ratio=self.padding_ratio)
+        rgb_c = crop_square_resize(rgb, Bbox, self.crop_size_img, interpolation=cv2.INTER_LINEAR)
+        mask_vis_c = crop_square_resize(mask_vis, Bbox, self.crop_size_gt, interpolation=cv2.INTER_NEAREST)
+        GT_Front_c = crop_square_resize(GT_Front, Bbox, self.crop_size_gt, interpolation=cv2.INTER_NEAREST)
+        GT_Front_hcce = self.hcce_encode(GT_Front_c)
+        GT_Back_c = crop_square_resize(GT_Back, Bbox, self.crop_size_gt, interpolation=cv2.INTER_NEAREST)
+        GT_Back_hcce = self.hcce_encode(GT_Back_c)
+        rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce = self.preprocess(rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce)
+        
+        cam_K = np.array(info_['cam_K']).reshape((3, 3))
+        cam_R_m2c = np.array(info_['cam_R_m2c']).reshape((3, 3))
+        cam_t_m2c = np.array(info_['cam_t_m2c']).flatten()
+        Bbox_tensor = torch.from_numpy(Bbox.astype(np.float32))
+        cam_K_tensor = torch.from_numpy(cam_K.astype(np.float32))
+        img_size_tensor = torch.from_numpy(np.array(img_size).astype(np.float32))
+        cam_R_tensor = torch.from_numpy(cam_R_m2c.astype(np.float32))
+        cam_t_tensor = torch.from_numpy(cam_t_m2c.astype(np.float32))
+        return rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox_tensor, cam_K_tensor, img_size_tensor, cam_R_tensor, cam_t_tensor
+
+
+class TestBopDatasetBF_PnPNet(TestBopDatasetBackFront):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, index):
+        info_ = self.dataset_info['obj_info']['obj_%s'%str(self.current_obj_id).rjust(6, '0')][index]
+        if self.bbox_2D is None: 
+            rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_R_m2c, cam_t_m2c = super().__getitem__(index)
+        else: 
+            rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_R_m2c, cam_t_m2c, scene, image, score = super().__getitem__(index)
+        rgb = cv2.imread(info_['rgb'])
+        img_size = rgb.shape[:2] # [h, w]
+        img_size_tensor = torch.from_numpy(np.array(img_size).astype(np.float32))
+        if self.bbox_2D is None: 
+            return rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, img_size_tensor, cam_R_m2c, cam_t_m2c
+        else: 
+            return rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, img_size_tensor, cam_R_m2c, cam_t_m2c, scene, image, score 
+ 
