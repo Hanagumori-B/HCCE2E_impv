@@ -399,7 +399,7 @@ class HccePose_PatchPnP_Loss(HccePose_Loss):
     def __init__(self, size_xyz=None, symmetric=False):
         super().__init__()
         self.size_xyz=size_xyz
-        self.pm_loss = PyPMLoss(disentangle_z=True, norm_by_extent=True, t_loss_use_points=True, symmetric=symmetric)
+        self.pm_loss = PyPMLoss(r_only=True, norm_by_extent=True, symmetric=symmetric)
         self.coord_front_loss = nn.L1Loss(reduction='none')
         self.coord_back_loss = nn.L1Loss(reduction='none')
         
@@ -408,8 +408,9 @@ class HccePose_PatchPnP_Loss(HccePose_Loss):
                 pred_coords_f, pred_coords_b,
                 gt_front, gt_back, gt_mask, 
                 gt_rot_mat, gt_t_site, 
-                model_points,
-                net_ref, cam_K, Bbox, s_zoom, sym_infos
+                model_points, net_ref, 
+                cam_K=None, Bbox=None, s_zoom=None, 
+                sym_infos=None
                 ):
         base_losses = super().forward(pred_front, pred_back, pred_mask, gt_front, gt_back, gt_mask)
         
@@ -427,12 +428,12 @@ class HccePose_PatchPnP_Loss(HccePose_Loss):
         
         pred_rot_mat = rot6d_to_mat_batch(pred_rot_6d)
         batch_extents = self.size_xyz.unsqueeze(0).expand(B, -1)
-        pred_trans = site_to_trans_batch(pred_t_site, cam_K, Bbox, s_zoom)
-        gt_trans = site_to_trans_batch(gt_t_site, cam_K, Bbox, s_zoom)
-        loss_pm = self.pm_loss(pred_rot_mat, gt_rot_mat, model_points, pred_transes=pred_trans, gt_transes=gt_trans, extents=batch_extents, sym_infos=sym_infos)
+        # pred_trans = site_to_trans_batch(pred_t_site, cam_K, Bbox, s_zoom)
+        # gt_trans = site_to_trans_batch(gt_t_site, cam_K, Bbox, s_zoom)
+        loss_pm = self.pm_loss(pred_rot_mat, gt_rot_mat, model_points, extents=batch_extents, sym_infos=sym_infos)
         loss_pm_r = loss_pm['loss_PM_R']
-        loss_pm_xy = loss_pm['loss_PM_xy']
-        loss_pm_z = loss_pm['loss_PM_z']
+        # loss_pm_xy = loss_pm['loss_PM_xy']
+        # loss_pm_z = loss_pm['loss_PM_z']
 
         # pred_r_q = mat2quat_batch(rot6d_to_mat_batch(pred_rot_6d))
         # gt_r_q = mat2quat_batch(gt_rot_mat)
@@ -445,8 +446,8 @@ class HccePose_PatchPnP_Loss(HccePose_Loss):
             'coord_front_loss': loss_coord_f,
             'coord_back_loss': loss_coord_b,
             'pm_r_loss': loss_pm_r,
-            'pm_xy_loss': loss_pm_xy,
-            'pm_z_loss': loss_pm_z,
+            # 'pm_xy_loss': loss_pm_xy,
+            # 'pm_z_loss': loss_pm_z,
             # 'r_loss': loss_r,
             'center_loss': loss_center,
             'z_loss': loss_z

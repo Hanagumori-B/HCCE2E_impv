@@ -255,8 +255,8 @@ if __name__ == '__main__':
         'z_loss': 2.0,
         # 'r_loss': 0.0,
         'pm_r_loss': 1.5,
-        'pm_xy_loss': 1.0,
-        'pm_z_loss': 2.0,
+        # 'pm_xy_loss': 1.0,
+        # 'pm_z_loss': 2.0,
     }
     
     # 梯度裁剪
@@ -616,7 +616,7 @@ if __name__ == '__main__':
                         GT_Front_hcce, GT_Back_hcce, mask_vis_c, 
                         cam_R_m2c, gt_t_site, 
                         batch_model_points, net if ide_debug else net.module,
-                        cam_K, bbox, s_zoom=128.0, sym_infos=sym_infos
+                        sym_infos=sym_infos
                     )
                     
                     l_l = [
@@ -629,8 +629,8 @@ if __name__ == '__main__':
                         current_factors['z_loss'] * current_loss['z_loss'],
                         # current_factors['r_loss'] * current_loss['r_loss'],
                         current_factors['pm_r_loss'] * current_loss['pm_r_loss'],
-                        current_factors['pm_xy_loss'] * current_loss['pm_xy_loss'],
-                        current_factors['pm_z_loss'] * current_loss['pm_z_loss'],
+                        # current_factors['pm_xy_loss'] * current_loss['pm_xy_loss'],
+                        # current_factors['pm_z_loss'] * current_loss['pm_z_loss'],
                     ] 
                     loss = torch.stack(l_l).sum()
                 
@@ -671,8 +671,8 @@ if __name__ == '__main__':
                             # writer.add_scalar('Train/Loss_Rotation', current_loss['r_loss'].item(), record_epoch)
                             writer.add_scalar('Train/Loss_Point_Match_Rotation', current_loss['pm_r_loss'].item(), record_epoch)
                             writer.add_scalar('Train/Loss_Z', current_loss['z_loss'].item(), record_epoch)
-                            writer.add_scalar('Train/Loss_Point_Match_XY', current_loss['pm_xy_loss'].item(), record_epoch)
-                            writer.add_scalar('Train/Loss_Point_Match_Z', current_loss['pm_z_loss'].item(), record_epoch)
+                            # writer.add_scalar('Train/Loss_Point_Match_XY', current_loss['pm_xy_loss'].item(), record_epoch)
+                            # writer.add_scalar('Train/Loss_Point_Match_Z', current_loss['pm_z_loss'].item(), record_epoch)
                             # 记录学习率
                             writer.add_scalar('Train/Learning_Rate', optimizer.param_groups[0]['lr'], record_epoch)
                             writer.add_scalar('Train/Learning_Rate_PatchPnP', optimizer.param_groups[1]['lr'], record_epoch)
