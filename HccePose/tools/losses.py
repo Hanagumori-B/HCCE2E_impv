@@ -41,39 +41,46 @@ class PyPMLoss(nn.Module):
             gt_rots = quat2mat_batch(gt_rots)
         if self.symmetric:
             gt_rots = get_closest_rot_batch(pred_rots, gt_rots, sym_infos=sym_infos)
-
+        B = pred_rots.shape[0]
         # 2. 变换点云 (仅旋转部分)
-        pts_est = transform_pts_batch(points, pred_rots, t=None)
-        pts_gt = transform_pts_batch(points, gt_rots, t=None)
+        pts_est_r = transform_pts_batch(points, pred_rots, gt_transes.view(B, 3, 1) if gt_transes is not None else None)
+        pts_gt = transform_pts_batch(points, gt_rots, gt_transes.view(B, 3, 1) if gt_transes is not None else None)
 
         # 3. 归一化系数
         weight = 1.0 / extents.max(1)[0].view(-1, 1, 1) if self.norm_by_extent else 1.0
 
         # 4. 核心损失逻辑
         if self.r_only:
-            return {"loss_PM_R": self._compute_loss(pts_est, pts_gt, weight)}
+            return {"loss_PM_R": self._compute_loss(pts_est_r, pts_gt, weight)}
 
         # 如果解耦 T，则旋转损失只取决于旋转变换后的点云
         loss_dict = {}
-        loss_dict["loss_PM_R"] = self._compute_loss(pts_est, pts_gt, weight)
+        loss_dict["loss_PM_R"] = self._compute_loss(pts_est_r, pts_gt, weight)
 
         if self.disentangle_z:
+            pred_t_xy = gt_transes.clone()
+            pred_t_xy[:, :2] = pred_transes[:, :2]
+            pts_est_xy = transform_pts_batch(points, gt_rots, pred_t_xy.view(B, 3, 1))
+            pred_t_z = gt_transes.clone()
+            pred_t_z[:, 2] = pred_transes[:, 2]
+            pts_est_z = transform_pts_batch(points, gt_rots, pred_t_z.view(B, 3, 1))
             if self.t_loss_use_points:
                 # 使用点云计算 xy 和 z 的损失
-                loss_dict["loss_PM_xy"] = self._compute_loss(pred_transes[:, :2], gt_transes[:, :2], weight=1.0) # 简化逻辑
-                loss_dict["loss_PM_z"] = self._compute_loss(pred_transes[:, 2], gt_transes[:, 2], weight=1.0)
+                loss_dict["loss_PM_xy"] = self._compute_loss(pts_est_xy, pts_gt, weight)
+                loss_dict["loss_PM_z"] = self._compute_loss(pts_est_z, pts_gt, weight)
             else:
-                loss_dict["loss_PM_xy_noP"] = self.loss_func(pred_transes[:, :2], gt_transes[:, :2])
-                loss_dict["loss_PM_z_noP"] = self.loss_func(pred_transes[:, 2], gt_transes[:, 2])
+                loss_dict["loss_PM_xy_noP"] = self.loss_func(pts_est_xy, pts_gt)
+                loss_dict["loss_PM_z_noP"] = self.loss_func(pts_est_z, pts_gt)
                 
         elif self.disentangle_t:
+            pts_est_t = transform_pts_batch(points, gt_rots, pred_transes.view(B, 3, 1))
             if self.t_loss_use_points:
-                loss_dict["loss_PM_T"] = self._compute_loss(pred_transes, gt_transes, weight=1.0)
+                loss_dict["loss_PM_T"] = self._compute_loss(pts_est_t, pts_gt, weight)
             else:
-                loss_dict["loss_PM_T_noP"] = self.loss_func(pred_transes, gt_transes)
+                loss_dict["loss_PM_T_noP"] = self.loss_func(pts_est_t, pts_gt)
         else:
             # 不解耦：(R_pred * P + T_pred) vs (R_gt * P + T_gt)
-            pts_est_rt = pts_est + pred_transes.view(-1, 1, 3)
+            pts_est_rt = pts_est_r + pred_transes.view(-1, 1, 3)
             pts_gt_rt = pts_gt + gt_transes.view(-1, 1, 3)
             return {"loss_PM_RT": self._compute_loss(pts_est_rt, pts_gt_rt, weight)}
 

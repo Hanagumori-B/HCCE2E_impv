@@ -214,7 +214,7 @@ if __name__ == '__main__':
     # Learning rate.
     # 学习率。
     hcce_lr = 5e-4
-    patch_pnp_lr = 2e-4
+    patch_pnp_lr = 3e-4
     
     # Number of samples per training epoch.
     # 每轮训练的样本数量。
@@ -251,10 +251,12 @@ if __name__ == '__main__':
         'mask_loss': 1.0,
         'coord_front_loss': 1.0,
         'coord_back_loss': 1.0,
-        'center_loss': 2.0,
-        'z_loss': 3.0,
-        'pm_r_loss': 2.0,
+        'center_loss': 1.5,
+        'z_loss': 2.0,
         # 'r_loss': 0.0,
+        'pm_r_loss': 1.5,
+        'pm_xy_loss': 1.0,
+        'pm_z_loss': 2.0,
     }
     
     # 梯度裁剪
@@ -353,10 +355,18 @@ if __name__ == '__main__':
         # 获取物体的 3D 尺寸。
         min_xyz = torch.from_numpy(np.array([obj_info['min_x'], obj_info['min_y'], obj_info['min_z']],dtype=np.float32)).to('cuda:'+CUDA_DEVICE)
         size_xyz = torch.from_numpy(np.array([obj_info['size_x'], obj_info['size_y'], obj_info['size_z']],dtype=np.float32)).to('cuda:'+CUDA_DEVICE)
+        is_symmetric = False
+        sym_infos = None
+        if 'symmetries_discrete' in obj_info and len(obj_info['symmetries_discrete']) > 0:
+            is_symmetric = True
+            sym_infos = obj_info['symmetries_discrete']
+        if 'symmetries_continuous' in obj_info and len(obj_info['symmetries_continuous']) > 0:
+            is_symmetric = True
+            sym_infos = obj_info['symmetries_continuous']
         
         # Define the loss function and neural network.
         # 定义损失函数和神经网络。
-        loss_net = HccePose_PatchPnP_Loss(size_xyz = size_xyz)
+        loss_net = HccePose_PatchPnP_Loss(size_xyz, is_symmetric)
         scaler = GradScaler()
         net = HccePose_PatchPnP_Net(
                 net=net_name,
@@ -605,7 +615,8 @@ if __name__ == '__main__':
                         pred_rot_6d, pred_t_site, pred_coords_f, pred_coords_b,
                         GT_Front_hcce, GT_Back_hcce, mask_vis_c, 
                         cam_R_m2c, gt_t_site, 
-                        batch_model_points, net if ide_debug else net.module
+                        batch_model_points, net if ide_debug else net.module,
+                        cam_K, bbox, s_zoom=128.0, sym_infos=sym_infos
                     )
                     
                     l_l = [
@@ -618,6 +629,8 @@ if __name__ == '__main__':
                         current_factors['z_loss'] * current_loss['z_loss'],
                         # current_factors['r_loss'] * current_loss['r_loss'],
                         current_factors['pm_r_loss'] * current_loss['pm_r_loss'],
+                        current_factors['pm_xy_loss'] * current_loss['pm_xy_loss'],
+                        current_factors['pm_z_loss'] * current_loss['pm_z_loss'],
                     ] 
                     loss = torch.stack(l_l).sum()
                 
@@ -658,6 +671,8 @@ if __name__ == '__main__':
                             # writer.add_scalar('Train/Loss_Rotation', current_loss['r_loss'].item(), record_epoch)
                             writer.add_scalar('Train/Loss_Point_Match_Rotation', current_loss['pm_r_loss'].item(), record_epoch)
                             writer.add_scalar('Train/Loss_Z', current_loss['z_loss'].item(), record_epoch)
+                            writer.add_scalar('Train/Loss_Point_Match_XY', current_loss['pm_xy_loss'].item(), record_epoch)
+                            writer.add_scalar('Train/Loss_Point_Match_Z', current_loss['pm_z_loss'].item(), record_epoch)
                             # 记录学习率
                             writer.add_scalar('Train/Learning_Rate', optimizer.param_groups[0]['lr'], record_epoch)
                             writer.add_scalar('Train/Learning_Rate_PatchPnP', optimizer.param_groups[1]['lr'], record_epoch)

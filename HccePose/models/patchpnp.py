@@ -141,11 +141,12 @@ class PatchPnPNet(nn.Module):
         # # x = self.mlp(x)
         B, C, H, W = x.shape
         coord2d_low_res = F.adaptive_avg_pool2d(coord2d, (H, W))
+        avg_mask = F.adaptive_avg_pool2d(mask_attention, (8, 8)).view(B, 64, 1)
         coord_seq = coord2d_low_res.view(B, 2, H * W).permute(0, 2, 1)
         pos_embed = self.pose_proj(coord_seq)
         x = x.view(B, C, H * W).permute(0, 2, 1)
         x = self.pnp_transformer(x, pos_embed)
-        x = x.mean(dim=1)
+        x = (x * avg_mask).mean(dim=1)
         rot_6d = self.fc_r(x)
         t_site = self.fc_t(x)
         
