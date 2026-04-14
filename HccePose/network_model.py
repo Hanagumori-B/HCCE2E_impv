@@ -744,7 +744,7 @@ class HccePose_PatchPnP_Net(HccePose_BF_Net):
         pred_rot_6d, pred_t_site = self.pnp_net(
             pnp_input, 
             extents=batch_extents,
-            mask_attention=pred_mask_prob
+            mask_attention=pred_mask_prob.detach()
         )
         
         return pred_mask_logits, pred_codes_logits, pred_rot_6d, pred_t_site, norm_coords_f, norm_coords_b

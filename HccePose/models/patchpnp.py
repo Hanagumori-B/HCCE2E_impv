@@ -110,11 +110,13 @@ class PatchPnPNet(nn.Module):
     def forward(self, x: torch.Tensor, region=None, extents=None, mask_attention=None):
         bs, in_c, fh, fw = x.shape
         if in_c == 8:
-            coord2d = x[:, 6:8, :, :]
+            coord_2d = x[:, 6:8, :, :]
         # if in_c in [3, 5] and self.denormalize_by_extent and extents is not None:
         #     x[:, :3, :, :] = (x[:, :3, :, :] - 0.5) * extents.view(bs, 3, 1 ,1)
         # elif in_c in [6, 8] and self.denormalize_by_extent and extents is not None:
-            x[:, :6, :, :] = (x[:, :6, :, :] - 0.5) * extents.view(bs, 3, 1, 1).repeat(1, 2, 1, 1)
+            # x[:, :6, :, :] = (x[:, :6, :, :] - 0.5) * extents.view(bs, 3, 1, 1).repeat(1, 2, 1, 1)
+            coords_3d = (x[:, :6, :, :] - 0.5) * extents.view(bs, 3, 1, 1).repeat(1, 2, 1, 1)
+            x = torch.cat([coords_3d, coord_2d], dim=1)
         else:
             raise ValueError('Wrong input shape!')
         
@@ -140,13 +142,14 @@ class PatchPnPNet(nn.Module):
         # x = x.flatten(1)
         # # x = self.mlp(x)
         B, C, H, W = x.shape
-        coord2d_low_res = F.adaptive_avg_pool2d(coord2d, (H, W))
+        coord2d_low_res = F.adaptive_avg_pool2d(coord_2d, (H, W))
         avg_mask = F.adaptive_avg_pool2d(mask_attention, (8, 8)).view(B, 64, 1)
         coord_seq = coord2d_low_res.view(B, 2, H * W).permute(0, 2, 1)
         pos_embed = self.pose_proj(coord_seq)
         x = x.view(B, C, H * W).permute(0, 2, 1)
         x = self.pnp_transformer(x, pos_embed)
-        x = (x * avg_mask).mean(dim=1)
+        masked_x = x * avg_mask
+        x = masked_x.sum(dim=1) / (avg_mask.sum(dim=1) + 1e-6) # Masked Pooling
         rot_6d = self.fc_r(x)
         t_site = self.fc_t(x)
         
