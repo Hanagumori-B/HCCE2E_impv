@@ -45,6 +45,7 @@ class PatchPnPNet(nn.Module):
         self.mask_attention_type = mask_attention_type
         self.denormalize_by_extent = denormalize_by_extent
         self.drop_prob = drop_prob
+        self.feat_size = 8
         self.dropblock = LinearScheduler(
             DropBlock2D(drop_prob=drop_prob, block_size=5),
             start_value=0.0,
@@ -74,7 +75,6 @@ class PatchPnPNet(nn.Module):
             nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=1, padding=1, bias=False),
             nn.GroupNorm(num_gn_groups, feat_dim),
             nn.GELU(),
-            # 8 x 8
         )
 
         # self.flatten_dim = feat_dim * 8 * 8
@@ -143,13 +143,14 @@ class PatchPnPNet(nn.Module):
         # # x = self.mlp(x)
         B, C, H, W = x.shape
         coord2d_low_res = F.adaptive_avg_pool2d(coord_2d, (H, W))
-        avg_mask = F.adaptive_avg_pool2d(mask_attention, (8, 8)).view(B, 64, 1)
         coord_seq = coord2d_low_res.view(B, 2, H * W).permute(0, 2, 1)
+        avg_mask = F.adaptive_avg_pool2d(mask_attention, (self.feat_size, self.feat_size)).view(B, -1, 1)
         pos_embed = self.pose_proj(coord_seq)
         x = x.view(B, C, H * W).permute(0, 2, 1)
         x = self.pnp_transformer(x, pos_embed)
         masked_x = x * avg_mask
         x = masked_x.sum(dim=1) / (avg_mask.sum(dim=1) + 1e-6) # Masked Pooling
+        # x = x.mean(dim=1) # Mean Pooling
         rot_6d = self.fc_r(x)
         t_site = self.fc_t(x)
         
