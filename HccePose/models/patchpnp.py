@@ -146,22 +146,10 @@ class PatchPnPNet(nn.Module):
             nn.Linear(64, feat_dim)
         )
         # 6D Rotation
-        self.fc_r = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim // 2),
-            nn.GELU(),
-            nn.Linear(feat_dim // 2, rot_dim)
-        )
+        self.fc_r = nn.Linear(feat_dim, rot_dim)
         # t_size = (delta_x, delta_y, delta_z)
-        self.fc_xy = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim // 2),
-            nn.GELU(),
-            nn.Linear(feat_dim // 2, 2)
-        )
-        self.fc_z = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim // 2),
-            nn.GELU(),
-            nn.Linear(feat_dim // 2, 1)
-        )
+        self.fc_xy = nn.Linear(feat_dim, 2)
+        self.fc_z = nn.Linear(feat_dim, 1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
