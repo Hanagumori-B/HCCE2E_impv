@@ -844,7 +844,6 @@ def save_checkpoint(path, net, iteration_step, best_score, optimizer, max_to_kee
         save_name = str(epoch) + '.pt'
     torch.save(save_data, os.path.join(path, save_name))
   
-    
 def get_checkpoint(path, ext='.pt'):
     # saved_ckpt = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
     # saved_ckpt_s = [float(i.split('step')[0].replace('_', '.')) for i in saved_ckpt]
@@ -886,7 +885,6 @@ def save_best_checkpoint(best_score_path, net, optimizer, best_score, iteration_
     torch.save(save_data, os.path.join(best_score_path, best_score_file_name + '.pt'))
 
     print("best check point saved in ", os.path.join(best_score_path, best_score_file_name))
-
 
 def load_checkpoint(check_point_path, net : HccePose_BF_Net, optimizer=None, local_rank=0, CUDA_DEVICE='0'):
     best_score = 0
