@@ -758,8 +758,8 @@ class HccePose_PatchPnP_Net(HccePose_BF_Net):
         # 获取基础的 HCCE 解码结果（用于可视化）
         # base_res = super().inference_batch(inputs, Bbox, thershold)
         pred_mask = self.activation_function(pred_mask)
-        pred_mask[pred_mask > thershold] = 1.0
-        pred_mask[pred_mask <= thershold] = 0.0
+        # pred_mask[pred_mask > thershold] = 1.0
+        # pred_mask[pred_mask <= thershold] = 0.0
         pred_mask = pred_mask[:, 0, ...]
 
         pred_front_code_0 = pred_front_code * self.size_xyz[None,:,None,None] + self.min_xyz[None,:,None,None]

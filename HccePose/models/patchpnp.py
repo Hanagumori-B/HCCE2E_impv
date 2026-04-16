@@ -31,11 +31,65 @@ class PnPTransformer(nn.Module):
         return x
 
 
+class MultiScaleFeatureExtractor(nn.Module):
+    def __init__(self, 
+                 in_channels, 
+                 feat_dim=128,
+                 num_gn_groups=32,
+                ):
+        super().__init__()
+        # 128x128 -> 64x64
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(in_channels, feat_dim // 2, 3, stride=2, padding=1),
+            nn.GroupNorm(num_gn_groups // 2, feat_dim // 2), 
+            nn.GELU()
+        )
+        # 64x64 -> 32x32 (F32)
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(feat_dim // 2, feat_dim, 3, stride=2, padding=1),
+            nn.GroupNorm(num_gn_groups, feat_dim), 
+            nn.GELU()
+        )
+        # 32x32 -> 16x16 (F16)
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(feat_dim, feat_dim, 3, stride=2, padding=1),
+            nn.GroupNorm(num_gn_groups, feat_dim), 
+            nn.GELU()
+        )
+        # 16x16 -> 8x8 (F8)
+        self.layer4 = nn.Sequential(
+            nn.Conv2d(feat_dim, feat_dim, 3, stride=2, padding=1),
+            nn.GroupNorm(num_gn_groups, feat_dim), 
+            nn.GELU()
+        )
+        self.lat_f32 = nn.Conv2d(feat_dim, feat_dim // 2, 1)
+        self.lat_f16 = nn.Conv2d(feat_dim, feat_dim // 2, 1)
+        self.lat_f8  = nn.Conv2d(feat_dim, feat_dim // 2, 1)
+        self.fuse_smooth = nn.Sequential(
+            nn.Conv2d(feat_dim // 2 * 3, feat_dim, 3, padding=1),
+            nn.GroupNorm(num_gn_groups, feat_dim), nn.GELU()
+        )
+        
+    def forward(self, x):
+        f64 = self.layer1(x)
+        f32 = self.layer2(f64)
+        f16 = self.layer3(f32)
+        f8  = self.layer4(f16)
+
+        p32 = F.adaptive_avg_pool2d(self.lat_f32(f32), (16, 16)) # 下采样
+        p16 = self.lat_f16(f16)                                  # 原尺度
+        p8  = F.interpolate(self.lat_f8(f8), size=(16, 16), mode='bilinear') # 上采样
+
+        # 拼接融合: [B, 192, 16, 16]
+        fused = torch.cat([p32, p16, p8], dim=1)
+        return self.fuse_smooth(fused) # [B, 128, 16, 16]
+
+    
 class PatchPnPNet(nn.Module):
     def __init__(self, 
                  in_channels, 
                  feat_dim=128, 
-                 num_gn_groups=32,
+                 num_gn_groups=16,
                  rot_dim=6,
                  drop_prob=0.25,
                  mask_attention_type="none",
@@ -45,7 +99,6 @@ class PatchPnPNet(nn.Module):
         self.mask_attention_type = mask_attention_type
         self.denormalize_by_extent = denormalize_by_extent
         self.drop_prob = drop_prob
-        self.feat_size = 8
         self.dropblock = LinearScheduler(
             DropBlock2D(drop_prob=drop_prob, block_size=5),
             start_value=0.0,
@@ -55,27 +108,27 @@ class PatchPnPNet(nn.Module):
         if self.mask_attention_type == "concat":
             in_channels += 1
     
-        self.features = nn.Sequential( # input 128 x 128
-            nn.Conv2d(in_channels, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.GELU(),
-            # 64 x 64
-            nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.GELU(),
-            # 32 x 32
-            nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.GELU(),
-            # 16 x 16
-            nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.GELU(),
-            # 8 x 8
-            nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.GroupNorm(num_gn_groups, feat_dim),
-            nn.GELU(),
-        )
+        # self.features = nn.Sequential( # input 128 x 128
+        #     nn.Conv2d(in_channels, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
+        #     nn.GroupNorm(num_gn_groups, feat_dim),
+        #     nn.GELU(),
+        #     # 64 x 64
+        #     nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
+        #     nn.GroupNorm(num_gn_groups, feat_dim),
+        #     nn.GELU(),
+        #     # 32 x 32
+        #     nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
+        #     nn.GroupNorm(num_gn_groups, feat_dim),
+        #     nn.GELU(),
+        #     # 16 x 16
+        #     nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=2, padding=1, bias=False),
+        #     nn.GroupNorm(num_gn_groups, feat_dim),
+        #     nn.GELU(),
+        #     # 8 x 8
+        #     nn.Conv2d(feat_dim, feat_dim, kernel_size=3, stride=1, padding=1, bias=False),
+        #     nn.GroupNorm(num_gn_groups, feat_dim),
+        #     nn.GELU(),
+        # )
 
         # self.flatten_dim = feat_dim * 8 * 8
         # self.mlp = nn.Sequential(
@@ -85,15 +138,30 @@ class PatchPnPNet(nn.Module):
         #     nn.ReLU(inplace=True)
         # )
 
+        self.features = MultiScaleFeatureExtractor(in_channels, feat_dim, num_gn_groups)
         self.pnp_transformer = PnPTransformer(feat_dim, 8)
         self.pose_proj = nn.Sequential(
             nn.Linear(2, 64),
             nn.GELU(),
             nn.Linear(64, feat_dim)
         )
-
-        self.fc_r = nn.Linear(feat_dim, rot_dim) # 6D Rotation
-        self.fc_t = nn.Linear(feat_dim, 3)       # t_size = (delta_x, delta_y, delta_z)
+        # 6D Rotation
+        self.fc_r = nn.Sequential(
+            nn.Linear(feat_dim, feat_dim // 2),
+            nn.GELU(),
+            nn.Linear(feat_dim // 2, rot_dim)
+        )
+        # t_size = (delta_x, delta_y, delta_z)
+        self.fc_xy = nn.Sequential(
+            nn.Linear(feat_dim, feat_dim // 2),
+            nn.GELU(),
+            nn.Linear(feat_dim // 2, 2)
+        )
+        self.fc_z = nn.Sequential(
+            nn.Linear(feat_dim, feat_dim // 2),
+            nn.GELU(),
+            nn.Linear(feat_dim // 2, 1)
+        )
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -105,7 +173,8 @@ class PatchPnPNet(nn.Module):
             elif isinstance(m, nn.Linear):
                 normal_init(m, std=0.001)
         normal_init(self.fc_r, std=0.01)
-        normal_init(self.fc_t, std=0.01)
+        normal_init(self.fc_xy, std=0.01)
+        normal_init(self.fc_z, std=0.01)
 
     def forward(self, x: torch.Tensor, region=None, extents=None, mask_attention=None):
         bs, in_c, fh, fw = x.shape
@@ -144,7 +213,7 @@ class PatchPnPNet(nn.Module):
         B, C, H, W = x.shape
         coord2d_low_res = F.adaptive_avg_pool2d(coord_2d, (H, W))
         coord_seq = coord2d_low_res.view(B, 2, H * W).permute(0, 2, 1)
-        avg_mask = F.adaptive_avg_pool2d(mask_attention, (self.feat_size, self.feat_size)).view(B, -1, 1)
+        avg_mask = F.adaptive_avg_pool2d(mask_attention, (H, W)).view(B, -1, 1)
         pos_embed = self.pose_proj(coord_seq)
         x = x.view(B, C, H * W).permute(0, 2, 1)
         x = self.pnp_transformer(x, pos_embed)
@@ -152,6 +221,8 @@ class PatchPnPNet(nn.Module):
         x = masked_x.sum(dim=1) / (avg_mask.sum(dim=1) + 1e-6) # Masked Pooling
         # x = x.mean(dim=1) # Mean Pooling
         rot_6d = self.fc_r(x)
-        t_site = self.fc_t(x)
+        xy_site = self.fc_xy(x)
+        z_site = self.fc_z(x)
+        t_site = torch.concat([xy_site, z_site], dim=1)
         
         return rot_6d, t_site

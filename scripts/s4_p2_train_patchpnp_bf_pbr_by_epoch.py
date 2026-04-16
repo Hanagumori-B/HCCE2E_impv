@@ -38,6 +38,15 @@ def test(obj_ply,
     net.eval()
     local_add_list = []
     local_aad_list = []
+    
+    local_err_xy = []  # XY 平移误差 (mm)
+    local_err_z = []   # Z 平移误差 (mm)
+    local_err_rot = [] # 旋转误差 (deg)
+    
+    local_batch_max_xy = []
+    local_batch_max_z = []
+    local_batch_max_rot = []
+
     disable_tqdm = (local_rank != 0)
     for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, img_size, cam_R_m2c, cam_t_m2c) in tqdm(
         enumerate(test_loader), total=len(test_loader), desc='Validation', postfix='<' * 10, disable=disable_tqdm):
@@ -61,6 +70,10 @@ def test(obj_ply,
                 gt_ts_np = cam_t_m2c.detach().cpu().numpy()
                 if gt_ts_np.ndim == 3: # 处理 [B, 3, 1] 变成 [B, 3]
                     gt_ts_np = gt_ts_np.squeeze(-1)
+                    
+                curr_batch_err_xy = []
+                curr_batch_err_z = []
+                curr_batch_err_rot = []
 
                 # 2. 遍历 Batch 计算精度
                 for i in range(pred_rots_np.shape[0]):
@@ -82,6 +95,28 @@ def test(obj_ply,
                     local_add_list.append(np.array([add_val]))
                     local_aad_list.append(np.array([aad_val]))
                     
+                    #  XY 平移误差 (欧式距离)
+                    err_xy = np.linalg.norm(pred_trans_np[i, :2] - gt_ts_np[i, :2])
+                    #  Z 平移误差 (绝对差值)
+                    err_z = np.abs(pred_trans_np[i, 2] - gt_ts_np[i, 2])
+                    #  旋转误差 (角度距离) arccos((Trace(R_pred * R_gt^T) - 1) / 2)
+                    rel_rot = pred_rots_np[i] @ gt_rots_np[i].T
+                    cos_theta = (np.trace(rel_rot) - 1.0) / 2.0
+                    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+                    err_rot = np.rad2deg(np.arccos(cos_theta))
+
+                    curr_batch_err_xy.append(err_xy)
+                    curr_batch_err_z.append(err_z)
+                    curr_batch_err_rot.append(err_rot)
+                    
+                local_err_xy.extend(curr_batch_err_xy)
+                local_err_z.extend(curr_batch_err_z)
+                local_err_rot.extend(curr_batch_err_rot)
+                
+                local_batch_max_xy.append(np.max(curr_batch_err_xy))
+                local_batch_max_z.append(np.max(curr_batch_err_z))
+                local_batch_max_rot.append(np.max(curr_batch_err_rot))
+                
         if batch_idx == 0:
             print(f"GT Translation: {cam_t_m2c[0].cpu().numpy().flatten()}")
             print(f"Pr Translation: {pred_t[0].cpu().numpy().flatten()}")
@@ -123,20 +158,34 @@ def test(obj_ply,
     local_aad_list = np.concatenate(local_aad_list, axis=0) 
     local_aad_tensor = torch.from_numpy(local_aad_list).to(f'cuda:{local_rank}')
     
-    if world_size > 1:
-        # 准备列表接收所有进程的 Tensor
-        # DistributedSampler 会自动补齐数据，确保每个进程拿到的数据量一样多
-        gathered_tensors = [torch.zeros_like(local_tensor) for _ in range(world_size)]
-        torch.distributed.all_gather(gathered_tensors, local_tensor)
-        gathered_aad_tensors = [torch.zeros_like(local_aad_tensor) for _ in range(world_size)]
-        torch.distributed.all_gather(gathered_aad_tensors, local_aad_tensor)
+    def collect_results(local_data):
+        data_tensor = torch.tensor(local_data, device=device)
+        if world_size > 1:
+            gathered = [torch.zeros_like(data_tensor) for _ in range(world_size)]
+            torch.distributed.all_gather(gathered, data_tensor)
+            return torch.cat(gathered, dim=0).cpu().numpy()
+        return data_tensor.cpu().numpy()
+    
+    # if world_size > 1:
+    #     # 准备列表接收所有进程的 Tensor
+    #     # DistributedSampler 会自动补齐数据，确保每个进程拿到的数据量一样多
+    #     gathered_tensors = [torch.zeros_like(local_tensor) for _ in range(world_size)]
+    #     torch.distributed.all_gather(gathered_tensors, local_tensor)
+    #     gathered_aad_tensors = [torch.zeros_like(local_aad_tensor) for _ in range(world_size)]
+    #     torch.distributed.all_gather(gathered_aad_tensors, local_aad_tensor)
         
-        # 在所有进程上合并结果（这样每个进程都有完整的结果，方便后续逻辑一致）
-        all_add_list = torch.cat(gathered_tensors, dim=0).cpu().numpy()
-        all_aad_list = torch.cat(gathered_aad_tensors, dim=0).cpu().numpy()
-    else:
-        all_add_list = local_add_list
-        all_aad_list = local_aad_list
+    #     # 在所有进程上合并结果（这样每个进程都有完整的结果，方便后续逻辑一致）
+    #     all_add_list = torch.cat(gathered_tensors, dim=0).cpu().numpy()
+    #     all_aad_list = torch.cat(gathered_aad_tensors, dim=0).cpu().numpy()
+    # else:
+    all_add_list = collect_results(local_add_list)
+    all_aad_list = collect_results(local_aad_list)
+    all_xy = collect_results(local_err_xy)
+    all_z = collect_results(local_err_z)
+    all_rot = collect_results(local_err_rot)
+    all_max_xy = collect_results(local_batch_max_xy)
+    all_max_z = collect_results(local_batch_max_z)
+    all_max_rot = collect_results(local_batch_max_rot)
         
     add_list_l = np.mean(all_add_list, axis=0)
     max_acc_id = np.argmax(add_list_l)
@@ -145,11 +194,19 @@ def test(obj_ply,
     aad_list_l = np.mean(all_aad_list, axis=0)
     max_acc_aad = np.max(aad_list_l)
     if local_rank == 0:
-        print("="*30)
+        print("=" * 30)
         print(f"RANSAC Validation Results")
         print(f"Max Accuracy (ADD):    {max_acc:.4f}")
         print(f"Max Accuracy (AAD):    {max_acc_aad:.4f}")
-        print("="*30)
+        print("-" * 30)
+        print(f"Avg XY Error:          {np.mean(all_xy):.2f} mm")
+        print(f"Avg Z  Error:          {np.mean(all_z):.2f} mm")
+        print(f"Avg Rot Error:         {np.mean(all_rot):.2f} deg")
+        print("-" * 30)
+        print(f"Avg Batch Max XY Err:  {np.mean(all_max_xy):.2f} mm")
+        print(f"Avg Batch Max Z  Err:  {np.mean(all_max_z):.2f} mm")
+        print(f"Avg Batch Max Rot Err: {np.mean(all_max_rot):.2f} deg")
+        print("=" * 30)
     net.train()
     return max_acc_id, float(max_acc), float(max_acc_aad), add_list_l
 
@@ -209,12 +266,12 @@ if __name__ == '__main__':
     
     # Total number of training batches.
     # 总训练批次。
-    total_epochs = 65
+    total_epochs = 80
     
     # Learning rate.
     # 学习率。
     hcce_lr = 5e-4
-    patch_pnp_lr = 3e-4
+    patch_pnp_lr = 2e-4
     
     # Number of samples per training epoch.
     # 每轮训练的样本数量。
@@ -235,10 +292,10 @@ if __name__ == '__main__':
     # Whether to enable load_breakpoint.
     # 是否启用 load_breakpoint 加载断点。
     load_breakpoint = False
-    manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-09_21:16:47'
+    manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-13_21:56:21'
     
     # 配置学习率衰减
-    warmup_epochs = 5
+    warmup_epochs = 3
     
     # 备份存储位置
     output_save = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/'
@@ -433,64 +490,68 @@ if __name__ == '__main__':
         
         # scheduler
         iter_per_epoch = len(train_loader)
-        scheduler_warmup = torch.optim.lr_scheduler.LinearLR(
-            optimizer, 
-            start_factor=0.01, 
-            end_factor=1.0, 
-            total_iters=warmup_epochs * iter_per_epoch
-        )
-        scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, 
-            T_max=(total_epochs - warmup_epochs) * iter_per_epoch, 
-            eta_min=1e-6
-        )
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer, 
-            schedulers=[
-                scheduler_warmup, 
-                scheduler_cosine,
-                ], 
-            milestones=[warmup_epochs * iter_per_epoch,]
-        )
         
-        # def get_asynchronous_lr_lambdas():
-        #     min_factor = 0.01 # 最终都降到初始值的 1% (即 1e-6 和 3e-6)
-
-        #     # 规则 A：Backbone 的快退火
-        #     warmup_iters = warmup_epochs * iter_per_epoch
-        #     # backbone_cool_iters = total_epochs * iter_per_epoch // 3 * 2
-        #     total_iters = total_epochs * iter_per_epoch
-        #     backbone_cool_iters = total_iters
-        #     def backbone_lambda(iter):
-        #         if iter < warmup_iters:
-        #             # 线性 Warmup: 0.01 -> 1.0
-        #             return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
-        #         elif iter < backbone_cool_iters:
-        #             # 余弦退火: 1.0 -> 0.01
-        #             progress = (iter - warmup_iters) / (backbone_cool_iters - warmup_iters)
-        #             cos_out = (1 + math.cos(math.pi * progress)) / 2
-        #             return min_factor + (1.0 - min_factor) * cos_out
-        #         else:
-        #             # 彻底冷却，保持在 1% (1e-6) 锁定坐标图
-        #             return min_factor
-
-        #     # 规则 B：PatchPnP 的慢退火
-        #     def pnp_lambda(iter):
-        #         if iter < warmup_iters:
-        #             # 线性 Warmup
-        #             return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
-        #         else:
-        #             # 余弦退火
-        #             progress = (iter - warmup_iters) / (total_iters - warmup_iters)
-        #             cos_out = (1 + math.cos(math.pi * progress)) / 2
-        #             return min_factor + (1.0 - min_factor) * cos_out
-        #     return[backbone_lambda, pnp_lambda]
-
-        # # 挂载调度器
-        # scheduler = torch.optim.lr_scheduler.LambdaLR(
+        # scheduler_warmup = torch.optim.lr_scheduler.LinearLR(
         #     optimizer, 
-        #     lr_lambda=get_asynchronous_lr_lambdas()
+        #     start_factor=0.01, 
+        #     end_factor=1.0, 
+        #     total_iters=warmup_epochs * iter_per_epoch
         # )
+        # scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     optimizer, 
+        #     T_max=(total_epochs - warmup_epochs) * iter_per_epoch, 
+        #     eta_min=1e-6
+        # )
+        # scheduler = torch.optim.lr_scheduler.SequentialLR(
+        #     optimizer, 
+        #     schedulers=[
+        #         scheduler_warmup, 
+        #         scheduler_cosine,
+        #         ], 
+        #     milestones=[warmup_epochs * iter_per_epoch,]
+        # )
+        
+        def get_asynchronous_lr_lambdas():
+            min_factor = 0.01 # 最终都降到初始值的 1% (即 1e-6 和 3e-6)
+
+            # 规则 A：Backbone 的快退火
+            warmup_iters = warmup_epochs * iter_per_epoch
+            backbone_cool_iters = total_epochs * iter_per_epoch // 3 * 2
+            total_iters = total_epochs * iter_per_epoch
+            hold_iters = total_epochs * iter_per_epoch // 3
+            # backbone_cool_iters = total_iters
+            def backbone_lambda(iter):
+                if iter < warmup_iters:
+                    # 线性 Warmup: 0.01 -> 1.0
+                    return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
+                elif iter < backbone_cool_iters:
+                    # 余弦退火: 1.0 -> 0.01
+                    progress = (iter - warmup_iters) / (backbone_cool_iters - warmup_iters)
+                    cos_out = (1 + math.cos(math.pi * progress)) / 2
+                    return min_factor + (1.0 - min_factor) * cos_out
+                else:
+                    # 彻底冷却，保持在 1% (1e-6) 锁定坐标图
+                    return min_factor
+
+            # 规则 B：PatchPnP 的慢退火
+            def pnp_lambda(iter):
+                if iter < warmup_iters:
+                    # 线性 Warmup
+                    return min_factor + (1.0 - min_factor) * (iter / warmup_iters)
+                elif iter < hold_iters:
+                    return 1.0
+                else:
+                    # 余弦退火
+                    progress = (iter - hold_iters) / (total_iters - hold_iters)
+                    cos_out = (1 + math.cos(math.pi * progress)) / 2
+                    return min_factor + (1.0 - min_factor) * cos_out
+            return[backbone_lambda, pnp_lambda]
+
+        # 挂载调度器
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, 
+            lr_lambda=get_asynchronous_lr_lambdas()
+        )
 
     
 
@@ -562,21 +623,21 @@ if __name__ == '__main__':
                 total_params += params
             with open(os.path.join(output_save_path, 'model.txt'), 'w') as f:
                 print(f'total_params:{int(total_params)}', net, file=f)
-                
-        # max_acc_id, max_acc, add_list_l = test(
-                # obj_ply, obj_info, 
-                # net_test, test_loader, 
-                # local_rank=args.local_rank, 
-                # world_size=world_size if not ide_debug else 1,
-                # device='cuda:'+CUDA_DEVICE,
-                # writer=writer
-                # )
+            
+        # net_test.load_state_dict(net.module.state_dict())
+        # test(obj_ply, obj_info, 
+        #     net_test, test_loader, 
+        #     local_rank=args.local_rank, 
+        #     world_size=world_size if not ide_debug else 1,
+        #     device='cuda:'+CUDA_DEVICE,
+        #     writer=writer
+        #     )
         
         # Train
         # 训练
         for epoch in range(start_epoch, total_epochs):
             if not ide_debug:
-                # 这一行非常重要：保证 DDP 模式下每个 epoch 的数据打乱顺序不同
+                # 保证 DDP 模式下每个 epoch 的数据打乱顺序不同
                 train_loader.sampler.set_epoch(epoch)
                 pbar = tqdm(total=len(train_loader), desc=f"Epoch {epoch}", unit="batch", dynamic_ncols=True)
             
