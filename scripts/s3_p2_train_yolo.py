@@ -48,8 +48,8 @@ if __name__ == '__main__':
 
     # Specify the path to the dataset folder.
     # 指定数据集文件夹的路径。
-    dataset_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab'
-    save_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grab'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab'
+    save_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grab'
     
     # Specify the number of GPUs and the number of training epochs.  
     # For example, use 8 GPUs to train for 100 epochs.

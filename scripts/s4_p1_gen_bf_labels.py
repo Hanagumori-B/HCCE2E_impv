@@ -43,7 +43,7 @@ if __name__ == '__main__':
     
     # Specify the path to the dataset folder.
     # 指定数据集文件夹的路径。
-    dataset_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grabv1'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1'
     
     # Create an instance for loading the BOP dataset.
     # 创建一个用于加载 BOP 数据集的实例。

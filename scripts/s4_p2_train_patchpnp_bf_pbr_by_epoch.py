@@ -186,14 +186,18 @@ def test(obj_ply,
     all_max_xy = collect_results(local_batch_max_xy)
     all_max_z = collect_results(local_batch_max_z)
     all_max_rot = collect_results(local_batch_max_rot)
-        
+    
     add_list_l = np.mean(all_add_list, axis=0)
     max_acc_id = np.argmax(add_list_l)
     max_acc = np.max(add_list_l)
     
     aad_list_l = np.mean(all_aad_list, axis=0)
     max_acc_aad = np.max(aad_list_l)
+
     if local_rank == 0:
+        writer.add_scalar('Test/Avg XY Error', np.mean(all_xy), epoch)
+        writer.add_scalar('Test/Avg Z Error', np.mean(all_z), epoch)
+        writer.add_scalar('Test/Avg Rot Error', np.mean(all_rot), epoch)
         print("=" * 30)
         print(f"RANSAC Validation Results")
         print(f"Max Accuracy (ADD):    {max_acc:.4f}")
@@ -245,7 +249,7 @@ if __name__ == '__main__':
     # Specify the path to the dataset folder.
     # 指定数据集文件夹的路径。
     dataset_name = 'grabv1'
-    dataset_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/'
     dataset_path = os.path.join(dataset_path, dataset_name)
     
     # Specify the name of the subfolder in the dataset used for loading training data.
@@ -258,7 +262,7 @@ if __name__ == '__main__':
     # `start_obj_id` is the starting object ID, and `end_obj_id` is the ending object ID.
     # 训练的物体 ID 范围。  
     # `start_obj_id` 为起始物体 ID，`end_obj_id` 为终止物体 ID。
-    obj_id_list = [1]
+    obj_id_list = [4, 5]
     # obj_id_list = [1, 2, 3, 4, 5]
     
     # 主干网络类型
@@ -292,13 +296,13 @@ if __name__ == '__main__':
     # Whether to enable load_breakpoint.
     # 是否启用 load_breakpoint 加载断点。
     load_breakpoint = False
-    manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-13_21:56:21'
+    manual_load_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-13_21:56:21'
     
     # 配置学习率衰减
     warmup_epochs = 3
     
     # 备份存储位置
-    output_save = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/'
+    output_save = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/'
     
     
     # Loss 权重因子
@@ -347,7 +351,7 @@ if __name__ == '__main__':
         if ide_debug is True:
             pass
     CUDA_DEVICE = str(local_rank)
-    # np.random.seed(local_rank)
+    np.random.seed(local_rank)
     
     bop_dataset_item = BopDataset(dataset_path, local_rank=local_rank)
     train_bop_dataset_back_front_item = TrainBopDatasetBF_PnPNet(bop_dataset_item, train_folder_name, padding_ratio=padding_ratio)
@@ -360,7 +364,10 @@ if __name__ == '__main__':
         obj_path = bop_dataset_item.obj_model_list[bop_dataset_item.obj_id_list.index(obj_id)]
         print(obj_path)
         obj_ply = load_ply(obj_path)
-        obj_info = bop_dataset_item.obj_info_list[bop_dataset_item.obj_id_list.index(obj_id)]
+        train_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
+        test_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
+        # obj_info = bop_dataset_item.obj_info_list[bop_dataset_item.obj_id_list.index(obj_id)]
+        obj_info = train_bop_dataset_back_front_item.model_info_obj
         
         # 对模型中的点进行采样
         model_v = np.asarray(obj_ply['pts'])
@@ -420,6 +427,7 @@ if __name__ == '__main__':
         if 'symmetries_continuous' in obj_info and len(obj_info['symmetries_continuous']) > 0:
             is_symmetric = True
             sym_infos = obj_info['symmetries_continuous']
+        sym_infos = torch.from_numpy(sym_infos).to('cuda:'+CUDA_DEVICE)
         
         # Define the loss function and neural network.
         # 定义损失函数和神经网络。
@@ -454,7 +462,7 @@ if __name__ == '__main__':
         
         # Update the training and testing data loaders respectively.
         # 分别更新训练和测试数据加载器。
-        train_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
+        # train_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path) # 提到前面去更新
         if not ide_debug:
             train_sampler = torch.utils.data.DistributedSampler(
                 train_bop_dataset_back_front_item, 
@@ -471,7 +479,7 @@ if __name__ == '__main__':
             shuffle=(train_sampler is None)
             )
         
-        test_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
+        # test_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
         if not ide_debug:
             test_sampler = torch.utils.data.DistributedSampler(
                 test_bop_dataset_back_front_item, 
@@ -677,7 +685,7 @@ if __name__ == '__main__':
                         GT_Front_hcce, GT_Back_hcce, mask_vis_c, 
                         cam_R_m2c, gt_t_site, 
                         batch_model_points, net if ide_debug else net.module,
-                        sym_infos=sym_infos
+                        sym_infos=sym_infos.repeat(B)
                     )
                     
                     l_l = [

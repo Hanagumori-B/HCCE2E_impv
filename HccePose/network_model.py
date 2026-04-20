@@ -480,7 +480,7 @@ class HccePose_BF_Net(nn.Module):
             self.net = DeepLabV3(output_channels,  efficientnet_key=True, input_channels=input_channels, return_features=return_features)
         elif net == 'convnext':
             self.net = ConvNeXtV2_FPN(output_channels, input_channels=input_channels, return_features=return_features)
-            self.net.backbone.load_pretrained_weights('/media/ubuntu/WIN-E/YJP/HCCEPose/HccePose/models/pretrained/convnextv2_tiny_1k_224_fcmae.pt')
+            self.net.backbone.load_pretrained_weights('/media/ubuntu/DISK-C/YJP/HCCEPose/HccePose/models/pretrained/convnextv2_tiny_1k_224_fcmae.pt')
         else:
             assert KeyError('Wrong Net Name.')
         self.min_xyz = min_xyz
@@ -700,6 +700,7 @@ class HccePose_PatchPnP_Net(HccePose_BF_Net):
             rot_dim=6, 
             mask_attention_type="concat", # none | mul | concat
             denormalize_by_extent=True,
+            # feat_layers=[3, 4]
         )
         self.fb_type = fb_type
 

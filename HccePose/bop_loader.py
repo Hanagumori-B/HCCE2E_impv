@@ -1164,6 +1164,8 @@ class TrainBopDatasetBackFront(Dataset):
         if 'symmetries_discrete' in self.model_info_obj:
             if len(self.model_info_obj['symmetries_discrete']) == 0:
                 self.model_info_obj.pop("symmetries_discrete")
+            else:
+                self.model_info_obj['symmetries_discrete'] = np.array(self.model_info_obj['symmetries_discrete'])
         return
 
     def apply_augmentation(self, x):
@@ -1386,6 +1388,8 @@ class TestBopDatasetBackFront(Dataset):
         if 'symmetries_discrete' in self.model_info_obj:
             if len(self.model_info_obj['symmetries_discrete']) == 0:
                 self.model_info_obj.pop("symmetries_discrete")
+            else:
+                self.model_info_obj['symmetries_discrete'] = np.array(self.model_info_obj['symmetries_discrete'])
         return
 
     def preprocess(self, rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce):

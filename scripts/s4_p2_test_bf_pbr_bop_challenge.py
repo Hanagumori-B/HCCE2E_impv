@@ -52,10 +52,10 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(sys.argv[0])
     dataset_path = os.path.join(current_dir, 'datasets', dataset_name)
     
-    bbox_2D = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab/gt_bbox2d.json'
+    bbox_2D = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/gt_bbox2d.json'
     # bbox_2D = os.path.join(dataset_path, 'yolo11', 'yolo_detections.json')
     
-    csv_save_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grab/test'
+    csv_save_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grab/test'
     now_stamp = datetime.now()
     csv_save_path = os.path.join(csv_save_path, net_name, now_stamp.strftime('%Y-%m-%d_%H:%M:%S'))
     os.makedirs(csv_save_path, exist_ok=True)
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         print(obj_path)
         
         # save_path = os.path.join(dataset_path, 'HccePose', 'obj_%s'%str(obj_id).rjust(2, '0'))
-        save_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grab/pose_estimation/2026-01-30_13:39:14'
+        save_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grab/pose_estimation/2026-01-30_13:39:14'
         save_path = os.path.join(save_path, 'obj_%s'%str(obj_id).rjust(2, '0'))
         best_save_path = os.path.join(save_path, 'best_score')
         
@@ -220,11 +220,11 @@ if __name__ == '__main__':
     pass
 
 """
-    >>> >>> python /media/ubuntu/WIN-E/YJP/HCCEPose/tools/generate_targets.py <your csv file> <output path (without filename)>
+    >>> >>> python /media/ubuntu/DISK-C/YJP/HCCEPose/tools/generate_targets.py <your csv file> <output path (without filename)>
 
-    >>> export BOP_PATH="/media/ubuntu/WIN-E/YJP/HCCEPose/datasets" (export the path of your datasets)
+    >>> export BOP_PATH="/media/ubuntu/DISK-C/YJP/HCCEPose/datasets" (export the path of your datasets)
     >>> CUDA_VISIBLE_DEVICES=1 (to choose gpu)
-    >>> xvfb-run -a python /media/ubuntu/WIN-E/YJP/HCCEPose/bop_toolkit/scripts/eval_bop19_pose.py\
+    >>> xvfb-run -a python /media/ubuntu/DISK-C/YJP/HCCEPose/bop_toolkit/scripts/eval_bop19_pose.py\
         --renderer_type=vispy\
         --result_filenames=<path of your csv file, its file name should be like: {algorithm}_{dataset}-{split}.csv>\
         --targets_filename=<path of your target file (test_targets_bop19.json)>\

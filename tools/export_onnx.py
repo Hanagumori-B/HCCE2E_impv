@@ -33,7 +33,7 @@ def export_onnx(model: torch.nn.Module,
 
 if __name__ == '__main__':
     dataset_name = 'grabv1'
-    dataset_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/'
     dataset_path = os.path.join(dataset_path, dataset_name)
     obj_id = 1
     
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     
     export_onnx(
         model,
-        '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_01/best_score/0_8030step54900_60.pt',
+        '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_01/best_score/0_8030step54900_60.pt',
         input_like,
-        '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_01/best.onnx'
+        '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_01/best.onnx'
     )

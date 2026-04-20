@@ -177,7 +177,7 @@ class Multi_TestBopDatasetBFEPro(TestBopDatasetBFEPro):
         
 if __name__ == '__main__':
     dataset_name = 'grab'
-    dataset_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/'
     dataset_path = os.path.join(dataset_path, dataset_name)
     bop_dataset_item = BopDataset(dataset_path)
     print(get_obj_meta(bop_dataset_item, [1, 2, 3], '1'))

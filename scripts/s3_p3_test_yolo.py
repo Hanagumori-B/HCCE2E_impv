@@ -9,15 +9,15 @@ from tqdm import tqdm
 # ================= 用户配置区域 =================
 
 # 1. 你的 YOLOv11 模型路径 (.pt 文件)
-MODEL_PATH = "/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab/yolo11/train_obj_s/detection/obj_s/yolo11-detection-obj_s.pt"  
+MODEL_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/yolo11/train_obj_s/detection/obj_s/yolo11-detection-obj_s.pt"  
 
 # 2. 测试集数据的根目录
 # 假设结构是: DATASET_ROOT/scene_id/rgb/image_id.png
 # 例如: /home/data/bop/ycbv/test
-DATASET_ROOT = "/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab/test" 
+DATASET_ROOT = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/test" 
 
 # 3. 结果保存路径 (这就是你要传给 hcce 的 bbox_2D 参数)
-OUTPUT_JSON_PATH = "/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab/yolo11/yolo_detections.json"
+OUTPUT_JSON_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/yolo11/yolo_detections.json"
 
 # 4. 类别映射 (非常重要！！！)
 # YOLO 输出的 class_id 是从 0 开始的 (0, 1, 2...)

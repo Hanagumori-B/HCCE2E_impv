@@ -9,11 +9,11 @@ from tqdm import tqdm
 
 # ================= 配置区域 =================
 # 数据集根目录 (包含 models 和 test 文件夹的目录)
-DATASET_ROOT = "/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab" 
+DATASET_ROOT = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab" 
 
 # 预测结果 CSV 文件路径
-# CSV_PATH = "/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/grab/det6d_grab-test.csv"
-CSV_PATH = "/media/ubuntu/WIN-E/YJP/HCCEPose/output/grab/test/convnext/2026-03-10_22:11:02/det6d_grab-test.csv"
+# CSV_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/det6d_grab-test.csv"
+CSV_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/output/grab/test/convnext/2026-03-10_22:11:02/det6d_grab-test.csv"
 
 # 模型点云采样数量
 NUM_POINTS = 1000

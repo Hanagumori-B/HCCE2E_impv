@@ -36,13 +36,15 @@ class QueryPoseDecoder(nn.Module):
         super().__init__()
         self.pose_queries = nn.Parameter(torch.randn(3, feat_dim))
         self.cross_attn = nn.MultiheadAttention(feat_dim, num_heads, batch_first=True)
-        self.norm1 = nn.LayerNorm(feat_dim)
+        self.norm_q = nn.LayerNorm(feat_dim)
+        self.norm_kv = nn.LayerNorm(feat_dim)
+        self.norm_ffn = nn.LayerNorm(feat_dim)
+        self.norm_final = nn.LayerNorm(feat_dim)
         self.ffn = nn.Sequential(
             nn.Linear(feat_dim, feat_dim * 4),
             nn.GELU(),
             nn.Linear(feat_dim * 4, feat_dim)
         )
-        self.norm2 = nn.LayerNorm(feat_dim)
         # 6D Rotation
         self.fc_r = nn.Linear(feat_dim, rot_dim)
         # t_size = (delta_x, delta_y, delta_z)
@@ -52,72 +54,19 @@ class QueryPoseDecoder(nn.Module):
     def forward(self, attn_tokens): 
         B = attn_tokens.shape[0] # input: [B, 64, 128]
         queries = self.pose_queries.unsqueeze(0).expand(B ,-1, -1) # [B, 3, 128]
-        out_queries, _ = self.cross_attn(queries, attn_tokens, attn_tokens)
-        
-        queries = self.norm1(queries + out_queries)
-        ffn_out = self.ffn(queries)
-        out_queries = self.norm2(queries + ffn_out)
-        
+        q_norm = self.norm_q(queries)
+        kv_norm = self.norm_kv(attn_tokens)
+        attn_out, _ = self.cross_attn(q_norm, kv_norm, kv_norm)
+        queries = queries + attn_out
+        ffn_in = self.norm_ffn(queries)
+        queries = queries + self.ffn(ffn_in)
+        out_queries = self.norm_final(queries)
         rot_6d = self.fc_r(out_queries[:, 0, :])
         xy_site = self.fc_xy(out_queries[:, 1, :])
         z_site = self.fc_z(out_queries[:, 2, :])
         
         t_site = torch.concat([xy_site, z_site], dim=1)
         return rot_6d, t_site
-
-
-class MultiScaleFeatureExtractor(nn.Module):
-    def __init__(self, 
-                 in_channels, 
-                 feat_dim=128,
-                 num_gn_groups=32,
-                ):
-        super().__init__()
-        # 128x128 -> 64x64
-        self.layer1 = nn.Sequential(
-            nn.Conv2d(in_channels, feat_dim // 2, 3, stride=2, padding=1),
-            nn.GroupNorm(num_gn_groups // 2, feat_dim // 2), 
-            nn.GELU()
-        )
-        # 64x64 -> 32x32 (F32)
-        self.layer2 = nn.Sequential(
-            nn.Conv2d(feat_dim // 2, feat_dim, 3, stride=2, padding=1),
-            nn.GroupNorm(num_gn_groups, feat_dim), 
-            nn.GELU()
-        )
-        # 32x32 -> 16x16 (F16)
-        self.layer3 = nn.Sequential(
-            nn.Conv2d(feat_dim, feat_dim, 3, stride=2, padding=1),
-            nn.GroupNorm(num_gn_groups, feat_dim), 
-            nn.GELU()
-        )
-        # 16x16 -> 8x8 (F8)
-        self.layer4 = nn.Sequential(
-            nn.Conv2d(feat_dim, feat_dim, 3, stride=2, padding=1),
-            nn.GroupNorm(num_gn_groups, feat_dim), 
-            nn.GELU()
-        )
-        self.lat_f32 = nn.Conv2d(feat_dim, feat_dim // 2, 1)
-        self.lat_f16 = nn.Conv2d(feat_dim, feat_dim // 2, 1)
-        self.lat_f8  = nn.Conv2d(feat_dim, feat_dim // 2, 1)
-        self.fuse_smooth = nn.Sequential(
-            nn.Conv2d(feat_dim // 2 * 3, feat_dim, 3, padding=1),
-            nn.GroupNorm(num_gn_groups, feat_dim), nn.GELU()
-        )
-        
-    def forward(self, x):
-        f64 = self.layer1(x)
-        f32 = self.layer2(f64)
-        f16 = self.layer3(f32)
-        f8  = self.layer4(f16)
-
-        p32 = F.adaptive_avg_pool2d(self.lat_f32(f32), (16, 16)) # 下采样
-        p16 = self.lat_f16(f16)                                  # 原尺度
-        p8  = F.interpolate(self.lat_f8(f8), size=(16, 16), mode='bilinear') # 上采样
-
-        # 拼接融合: [B, 192, 16, 16]
-        fused = torch.cat([p32, p16, p8], dim=1)
-        return self.fuse_smooth(fused) # [B, 128, 16, 16]
 
     
 class PatchPnPNet(nn.Module):
@@ -204,10 +153,6 @@ class PatchPnPNet(nn.Module):
         bs, in_c, fh, fw = x.shape
         if in_c == 8:
             coord_2d = x[:, 6:8, :, :]
-        # if in_c in [3, 5] and self.denormalize_by_extent and extents is not None:
-        #     x[:, :3, :, :] = (x[:, :3, :, :] - 0.5) * extents.view(bs, 3, 1 ,1)
-        # elif in_c in [6, 8] and self.denormalize_by_extent and extents is not None:
-            # x[:, :6, :, :] = (x[:, :6, :, :] - 0.5) * extents.view(bs, 3, 1, 1).repeat(1, 2, 1, 1)
             coords_3d = (x[:, :6, :, :] - 0.5) * extents.view(bs, 3, 1, 1).repeat(1, 2, 1, 1)
             x = torch.cat([coords_3d, coord_2d], dim=1)
         else:

@@ -200,7 +200,7 @@ if __name__ == '__main__':
     # Specify the path to the dataset folder.
     # 指定数据集文件夹的路径。
     dataset_name = 'grabv1'
-    dataset_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/datasets/'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/'
     dataset_path = os.path.join(dataset_path, dataset_name)
     
     # Specify the name of the subfolder in the dataset used for loading training data.
@@ -256,7 +256,7 @@ if __name__ == '__main__':
     # Whether to enable load_breakpoint.
     # 是否启用 load_breakpoint 加载断点。
     load_breakpoint = False
-    manual_load_path = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/grabv1/pose_estimation/2026-03-28_21:13:28'
+    manual_load_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-03-28_21:13:28'
     validate_after_load = False
     
     # 配置学习率衰减
@@ -264,7 +264,7 @@ if __name__ == '__main__':
     
     
     # 备份存储位置
-    output_save = '/media/ubuntu/WIN-E/YJP/HCCEPose/output/'
+    output_save = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/'
     
     # Loss 权重因子
     loss_factors = {
