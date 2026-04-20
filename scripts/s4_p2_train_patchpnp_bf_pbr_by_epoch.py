@@ -86,16 +86,16 @@ def test(obj_ply,
                         obj_info, 
                         [[gt_rots_np[i], gt_ts_np[i]]], 
                         [[pred_rots_np[i], pred_trans_np[i]]],
-                        is_symmetric,
-                        sym_infos
+                        is_symmetric=is_symmetric,
+                        sym_infos=sym_infos
                     )[0]
                     aad_val = aad_mm(
                         obj_ply, 
                         obj_info, 
                         [[gt_rots_np[i], gt_ts_np[i]]], 
                         [[pred_rots_np[i], pred_trans_np[i]]],
-                        is_symmetric,
-                        sym_infos
+                        is_symmetric=is_symmetric,
+                        sym_infos=sym_infos
                     )[0]
                     
                     local_add_list.append(np.array([add_val]))
@@ -433,7 +433,7 @@ if __name__ == '__main__':
         if 'symmetries_continuous' in obj_info and len(obj_info['symmetries_continuous']) > 0:
             is_symmetric = True
             sym_infos = obj_info['symmetries_continuous']
-        sym_infos = torch.from_numpy(sym_infos).to('cuda:'+CUDA_DEVICE)
+        sym_infos = torch.from_numpy(sym_infos)
         
         # Define the loss function and neural network.
         # 定义损失函数和神经网络。
@@ -644,7 +644,9 @@ if __name__ == '__main__':
         #     local_rank=args.local_rank, 
         #     world_size=world_size if not ide_debug else 1,
         #     device='cuda:'+CUDA_DEVICE,
-        #     writer=writer
+        #     writer=writer,
+        #     is_symmetric=is_symmetric,
+        #     sym_infos=sym_infos
         #     )
         
         # Train
