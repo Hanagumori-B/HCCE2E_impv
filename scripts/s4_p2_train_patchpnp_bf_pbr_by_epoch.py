@@ -34,6 +34,8 @@ def test(obj_ply,
          device=None,
          writer=None,
          epoch=0,
+         is_symmetric=False,
+         sym_infos=None
          ):
     net.eval()
     local_add_list = []
@@ -83,13 +85,17 @@ def test(obj_ply,
                         obj_ply, 
                         obj_info, 
                         [[gt_rots_np[i], gt_ts_np[i]]], 
-                        [[pred_rots_np[i], pred_trans_np[i]]]
+                        [[pred_rots_np[i], pred_trans_np[i]]],
+                        is_symmetric,
+                        sym_infos
                     )[0]
                     aad_val = aad_mm(
                         obj_ply, 
                         obj_info, 
                         [[gt_rots_np[i], gt_ts_np[i]]], 
-                        [[pred_rots_np[i], pred_trans_np[i]]]
+                        [[pred_rots_np[i], pred_trans_np[i]]],
+                        is_symmetric,
+                        sym_infos
                     )[0]
                     
                     local_add_list.append(np.array([add_val]))
@@ -685,7 +691,7 @@ if __name__ == '__main__':
                         GT_Front_hcce, GT_Back_hcce, mask_vis_c, 
                         cam_R_m2c, gt_t_site, 
                         batch_model_points, net if ide_debug else net.module,
-                        sym_infos=sym_infos.repeat(B)
+                        sym_infos=[sym_infos for _ in range(B)]
                     )
                     
                     l_l = [
@@ -785,7 +791,9 @@ if __name__ == '__main__':
                 world_size=world_size if not ide_debug else 1,
                 device='cuda:'+CUDA_DEVICE,
                 writer=writer,
-                epoch=epoch * log_freq_per_epoch + log_freq_per_epoch - 1
+                epoch=epoch * log_freq_per_epoch + log_freq_per_epoch - 1,
+                is_symmetric=is_symmetric,
+                sym_infos=sym_infos
                 )
             if args.local_rank == 0 and output_save: 
                 writer.add_scalar('Test/ADD-S_Accuracy', max_acc, epoch * log_freq_per_epoch + log_freq_per_epoch - 1)

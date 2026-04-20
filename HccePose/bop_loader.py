@@ -1149,13 +1149,18 @@ class TrainBopDatasetBackFront(Dataset):
                 if "axis" in self.model_info_obj['symmetries_continuous'][0]:
                     sym_dicts = misc.get_symmetry_transformations(self.model_info_obj, np.pi / 180)
                     
-                    # 将其转换为 4x4 矩阵列表
+                    # # 将其转换为 4x4 矩阵列表
+                    # sym_matrices = []
+                    # for sym_d in sym_dicts:
+                    #     mat = np.eye(4)
+                    #     mat[:3, :3] = sym_d['R']
+                    #     mat[:3, 3] = sym_d['t'].flatten()
+                    #     sym_matrices.append(mat)
+                    
+                    # 将其转换为 3x3 矩阵列表
                     sym_matrices = []
                     for sym_d in sym_dicts:
-                        mat = np.eye(4)
-                        mat[:3, :3] = sym_d['R']
-                        mat[:3, 3] = sym_d['t'].flatten()
-                        sym_matrices.append(mat)
+                        sym_matrices.append(sym_d['R'].astype(np.float32))
                     
                     self.model_info_obj['symmetries_discrete'] = np.array(sym_matrices)
 
@@ -1165,7 +1170,15 @@ class TrainBopDatasetBackFront(Dataset):
             if len(self.model_info_obj['symmetries_discrete']) == 0:
                 self.model_info_obj.pop("symmetries_discrete")
             else:
-                self.model_info_obj['symmetries_discrete'] = np.array(self.model_info_obj['symmetries_discrete'])
+                syms = self.model_info_obj['symmetries_discrete']
+                syms = np.array(syms).astype(np.float32)
+                if syms.shape[-1] == 16 or (syms.ndim == 3 and syms.shape[1:] == (4, 4)):
+                    syms = syms.reshape(-1, 4, 4)[:, :3, :3] # 只要左上角 3x3
+                elif syms.shape[-1] == 9:
+                    syms = syms.reshape(-1, 3, 3)
+                elif syms.ndim == 3 and syms.shape[1:] == (3, 3):
+                    pass
+                self.model_info_obj['symmetries_discrete'] = syms
         return
 
     def apply_augmentation(self, x):
@@ -1373,13 +1386,18 @@ class TestBopDatasetBackFront(Dataset):
                 if "axis" in self.model_info_obj['symmetries_continuous'][0]:
                     sym_dicts = misc.get_symmetry_transformations(self.model_info_obj, np.pi / 180)
                     
-                    # 将其转换为 4x4 矩阵列表
+                    # # 将其转换为 4x4 矩阵列表
+                    # sym_matrices = []
+                    # for sym_d in sym_dicts:
+                    #     mat = np.eye(4)
+                    #     mat[:3, :3] = sym_d['R']
+                    #     mat[:3, 3] = sym_d['t'].flatten()
+                    #     sym_matrices.append(mat)
+                    
+                    # 将其转换为 3x3 矩阵列表
                     sym_matrices = []
                     for sym_d in sym_dicts:
-                        mat = np.eye(4)
-                        mat[:3, :3] = sym_d['R']
-                        mat[:3, 3] = sym_d['t'].flatten()
-                        sym_matrices.append(mat)
+                        sym_matrices.append(sym_d['R'].astype(np.float32))
                     
                     self.model_info_obj['symmetries_discrete'] = np.array(sym_matrices)
 
@@ -1389,7 +1407,15 @@ class TestBopDatasetBackFront(Dataset):
             if len(self.model_info_obj['symmetries_discrete']) == 0:
                 self.model_info_obj.pop("symmetries_discrete")
             else:
-                self.model_info_obj['symmetries_discrete'] = np.array(self.model_info_obj['symmetries_discrete'])
+                syms = self.model_info_obj['symmetries_discrete']
+                syms = np.array(syms).astype(np.float32)
+                if syms.shape[-1] == 16 or (syms.ndim == 3 and syms.shape[1:] == (4, 4)):
+                    syms = syms.reshape(-1, 4, 4)[:, :3, :3] # 只要左上角 3x3
+                elif syms.shape[-1] == 9:
+                    syms = syms.reshape(-1, 3, 3)
+                elif syms.ndim == 3 and syms.shape[1:] == (3, 3):
+                    pass
+                self.model_info_obj['symmetries_discrete'] = syms
         return
 
     def preprocess(self, rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce):
