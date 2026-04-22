@@ -3,20 +3,24 @@ import json
 import numpy as np
 import pandas as pd
 import trimesh
+import argparse
 from scipy.spatial.distance import cdist
 from collections import defaultdict
 from tqdm import tqdm
+from bop_toolkit_o.bop_toolkit_lib import inout, misc, pose_error
 
 # ================= 配置区域 =================
 # 数据集根目录 (包含 models 和 test 文件夹的目录)
-DATASET_ROOT = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab" 
+DATASET_ROOT = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1" 
 
 # 预测结果 CSV 文件路径
-# CSV_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/det6d_grab-test.csv"
-CSV_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/output/grab/test/convnext/2026-03-10_22:11:02/det6d_grab-test.csv"
+parser = argparse.ArgumentParser()
+parser.add_argument('csv_result')
+args = parser.parse_args()
+CSV_PATH = args.csv_result
 
 # 模型点云采样数量
-NUM_POINTS = 1000
+NUM_POINTS = 5000
 # ===========================================
 
 class BOPEvaluator:
@@ -54,11 +58,37 @@ class BOPEvaluator:
         
         # 判断是否对称: 如果有 symmetries_discrete 或 symmetries_continuous 字段且不为空
         is_symmetric = False
-        if 'symmetries_discrete' in info and len(info['symmetries_discrete']) > 0:
-            is_symmetric = True
-        if 'symmetries_continuous' in info and len(info['symmetries_continuous']) > 0:
-            is_symmetric = True
-            
+        if 'symmetries_continuous' in info:
+
+            if len(info['symmetries_continuous']):
+                if "axis" in info['symmetries_continuous'][0]:
+                    sym_dicts = misc.get_symmetry_transformations(info, np.pi / 180)
+                    
+                    # 将其转换为 3x3 矩阵列表
+                    sym_matrices = []
+                    for sym_d in sym_dicts:
+                        sym_matrices.append(sym_d['R'].astype(np.float32))
+                    
+                    info['symmetries_discrete'] = np.array(sym_matrices)
+                    is_symmetric = True
+
+            info.pop("symmetries_continuous")
+        
+        if 'symmetries_discrete' in info:
+            if len(info['symmetries_discrete']) == 0:
+                info.pop("symmetries_discrete")
+                is_symmetric = False
+            else:
+                syms = info['symmetries_discrete']
+                syms = np.array(syms).astype(np.float32)
+                if syms.shape[-1] == 16 or (syms.ndim == 3 and syms.shape[1:] == (4, 4)):
+                    syms = syms.reshape(-1, 4, 4)[:, :3, :3] # 只要左上角 3x3
+                elif syms.shape[-1] == 9:
+                    syms = syms.reshape(-1, 3, 3)
+                elif syms.ndim == 3 and syms.shape[1:] == (3, 3):
+                    pass
+                info['symmetries_discrete'] = syms
+                is_symmetric = True
         # 2. 加载点云 (如果没缓存)
         if obj_id not in self.model_points:
             ply_path = os.path.join(self.models_dir, f"obj_{obj_id:06d}.ply")
@@ -68,8 +98,11 @@ class BOPEvaluator:
             # 确保单位是 mm (BOP 标准是 mm)
             # 如果你的模型本身是米，这里可能需要 points * 1000
             self.model_points[obj_id] = points
-            
-        return self.model_points[obj_id], diameter, is_symmetric
+        if is_symmetric:
+            sym_info = info['symmetries_discrete']
+        else:
+            sym_info = None
+        return self.model_points[obj_id], diameter, is_symmetric, sym_info
 
     def get_gt_pose(self, scene_id, im_id, obj_id):
         """从 scene_gt.json 获取真值"""
@@ -126,28 +159,27 @@ class BOPEvaluator:
             
         return gt_poses
 
-def compute_add_metric(pose_pred, pose_gt, points):
-    """ADD: 平均点距离"""
-    R_p, t_p = pose_pred
-    R_gt, t_gt = pose_gt
+def sym_add(R_est, t_est, R_gt, t_gt, pts, sym_infos=None):
+    # 确保 t 是 (3,1)
+    t_est = t_est.reshape(3, 1)
+    t_gt = t_gt.reshape(3, 1)
     
-    pts_pred = np.dot(points, R_p.T) + t_p
-    pts_gt = np.dot(points, R_gt.T) + t_gt
+    pts_est = pose_error.misc.transform_pts_Rt(pts, R_est, t_est)
+    pts_gt = pose_error.misc.transform_pts_Rt(pts, R_gt, t_gt)
+    diff = pts_est - pts_gt
+    min_e = np.sqrt(np.sum(np.square(diff), axis=1)).mean()
     
-    return np.mean(np.linalg.norm(pts_pred - pts_gt, axis=1))
-
-def compute_adds_metric(pose_pred, pose_gt, points):
-    """ADD-S: 最近点平均距离 (用于对称物体)"""
-    R_p, t_p = pose_pred
-    R_gt, t_gt = pose_gt
-    
-    pts_pred = np.dot(points, R_p.T) + t_p
-    pts_gt = np.dot(points, R_gt.T) + t_gt
-    
-    # 计算距离矩阵 (N x N)
-    dists = cdist(pts_pred, pts_gt)
-    # 找最近邻
-    return np.mean(np.min(dists, axis=1))
+    if sym_infos is None or len(sym_infos) == 0:
+        return min_e
+        
+    for sym_R in sym_infos:
+        R_gt_sym = R_gt.dot(sym_R)
+        pts_gt_sym = pose_error.misc.transform_pts_Rt(pts, R_gt_sym, t_gt)
+        diff_sym = pts_est - pts_gt_sym
+        e = np.sqrt(np.sum(np.square(diff_sym), axis=1)).mean()
+        if e < min_e: 
+            min_e = e
+    return min_e
 
 def main():
     evaluator = BOPEvaluator(DATASET_ROOT)
@@ -173,7 +205,7 @@ def main():
             R_pred = np.fromstring(row['R'], sep=' ').reshape(3, 3)
             t_pred = np.fromstring(row['t'], sep=' ')
             
-            points, diameter, is_symmetric = evaluator.get_model_data(obj_id)
+            points, diameter, is_symmetric, sym_infos = evaluator.get_model_data(obj_id)
             gt_poses_list = evaluator.get_gt_pose(scene_id, im_id, obj_id)
             
             if not gt_poses_list:
@@ -183,9 +215,9 @@ def main():
             min_error = float('inf')
             for (R_gt, t_gt) in gt_poses_list:
                 if is_symmetric:
-                    err = compute_adds_metric((R_pred, t_pred), (R_gt, t_gt), points)
+                    err = sym_add(R_pred, t_pred, R_gt, t_gt, points, sym_infos)
                 else:
-                    err = compute_add_metric((R_pred, t_pred), (R_gt, t_gt), points)
+                    err = pose_error.add(R_pred, t_pred, R_gt, t_gt, points)
                 if err < min_error:
                     min_error = err
             

@@ -7,10 +7,10 @@ from tqdm import tqdm
 
 # 1. 你的自建数据集路径 (指向包含 scene_id 文件夹的目录)
 # 例如: /home/data/my_dataset/test
-DATASET_ROOT = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/test" 
+DATASET_ROOT = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test" 
 
 # 2. 输出文件名
-OUTPUT_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab/seg2d2_grab-test.json"
+OUTPUT_PATH = "/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json"
 
 # 3. 边界框类型选择
 # 'bbox_visib': 仅包含物体可见部分的边界框 (推荐，通常用于遮挡场景)

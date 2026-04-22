@@ -887,7 +887,7 @@ def save_best_checkpoint(best_score_path, net, optimizer, best_score, iteration_
 
     print("best check point saved in ", os.path.join(best_score_path, best_score_file_name))
 
-def load_checkpoint(check_point_path, net : HccePose_BF_Net, optimizer=None, local_rank=0, CUDA_DEVICE='0'):
+def load_checkpoint(check_point_path, net : HccePose_BF_Net, optimizer=None, local_rank=0, CUDA_DEVICE='0', strict=True):
     best_score = 0
     iteration_step = 0
     keypoints_ = []
@@ -897,7 +897,7 @@ def load_checkpoint(check_point_path, net : HccePose_BF_Net, optimizer=None, loc
         check_point_got=get_checkpoint(check_point_path)
         print(check_point_got)
         checkpoint = torch.load(check_point_got, map_location='cuda:'+CUDA_DEVICE, weights_only=False)
-        net.load_state_dict(checkpoint['model_state_dict'])
+        net.load_state_dict(checkpoint['model_state_dict'], strict=strict)
         if optimizer is not None:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         best_score = checkpoint.get('best_score', 0.0)

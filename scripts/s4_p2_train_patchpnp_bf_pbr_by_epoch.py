@@ -79,8 +79,6 @@ def test(obj_ply,
 
                 # 2. 遍历 Batch 计算精度
                 for i in range(pred_rots_np.shape[0]):
-                    # PatchPnP 是端到端的，通常每个物体只输出一个确定位姿
-                    # 直接计算该位姿的 ADD-S
                     add_val = add_s(
                         obj_ply, 
                         obj_info, 
@@ -268,7 +266,7 @@ if __name__ == '__main__':
     # `start_obj_id` is the starting object ID, and `end_obj_id` is the ending object ID.
     # 训练的物体 ID 范围。  
     # `start_obj_id` 为起始物体 ID，`end_obj_id` 为终止物体 ID。
-    obj_id_list = [4, 5]
+    obj_id_list = [5]
     # obj_id_list = [1, 2, 3, 4, 5]
     
     # 主干网络类型
@@ -433,7 +431,8 @@ if __name__ == '__main__':
         if 'symmetries_continuous' in obj_info and len(obj_info['symmetries_continuous']) > 0:
             is_symmetric = True
             sym_infos = obj_info['symmetries_continuous']
-        sym_infos = torch.from_numpy(sym_infos)
+        if sym_infos is not None: 
+            sym_infos = torch.from_numpy(sym_infos)
         
         # Define the loss function and neural network.
         # 定义损失函数和神经网络。
