@@ -45,7 +45,8 @@ def write_csv(filepath, obj_id_l, scene_id_l, img_id_l, r_l, t_l, score_l, time_
 if __name__ == '__main__':
     np.random.seed(0)
     
-    net_name = 'convnext'
+    # net_name = 'convnext'
+    net_name = 'resnet'
 
     dataset_name = 'grabv1'
     
@@ -65,13 +66,20 @@ if __name__ == '__main__':
     
     obj_id_list = [1, 2, 3, 4, 5]
     
+    # checkpoint_map = {
+    #     1: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_01/best_score/',
+    #     2: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_02/best_score/',
+    #     3: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_03/best_score/',
+    #     4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-07_16:58:22/obj_04/best_score/',
+    #     5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-07_16:58:22/obj_05/best_score/',
+    # } # convnext
     checkpoint_map = {
-        1: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_01/best_score/',
-        2: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_02/best_score/',
-        3: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-04_09:28:20/obj_03/best_score/',
-        4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-07_16:58:22/obj_04/best_score/',
-        5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-07_16:58:22/obj_05/best_score/',
-    }
+        1: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-11_10:31:58/obj_01/best_score/',
+        2: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-11_10:31:58/obj_02/best_score/',
+        3: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-11_10:31:58/obj_03/best_score/',
+        4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-12_14:47:28/obj_04/best_score/',
+        5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation/2026-04-12_14:47:28/obj_05/best_score/',
+    } #resnet
     
     CUDA_DEVICE = '0'
     

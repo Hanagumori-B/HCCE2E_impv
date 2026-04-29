@@ -51,13 +51,13 @@ if __name__ == '__main__':
     # Specify the path to the dataset folder.
     # 指定数据集文件夹的路径。
     # dataset_path = 'xxx/xxx/demo-bin-picking'
-    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1'
     
     # Extract the dataset name, the path to the `train_pbr` folder, and the output path for YOLO labels based on the given dataset path.
     # 根据给定的数据集路径，提取数据集名称、`train_pbr` 文件夹路径以及 YOLO 标签的输出路径。
     dataset_name = os.path.join(dataset_path)
     # dataset_path = os.path.join(dataset_path, '%s/train_pbr'%dataset_name)
-    dataset_path = os.path.join(dataset_path, '%s/train'%dataset_name)
+    dataset_path = os.path.join(dataset_path, '%s/train_pbr'%dataset_name)
     output_path  = os.path.join(dataset_path, '%s/yolo11/train_obj_s'%dataset_name)
     
     # Extract all object IDs from the models_info.json file.

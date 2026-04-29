@@ -48,8 +48,8 @@ if __name__ == '__main__':
 
     # Specify the path to the dataset folder.
     # 指定数据集文件夹的路径。
-    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grab'
-    save_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grab'
+    dataset_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1'
+    save_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1'
     
     # Specify the number of GPUs and the number of training epochs.  
     # For example, use 8 GPUs to train for 100 epochs.
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     task_suffix = 'detection'
     now_stamp = datetime.now()
     dataset_pbr_path = os.path.join(dataset_path, 'train_pbr')
-    train_multi_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'yolo_train', 'train.py')
+    train_multi_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'yolo_train', 'train.py')
     data_objs_path = os.path.join(os.path.dirname(dataset_pbr_path), 'yolo11', 'train_obj_s', 'yolo_configs', 'data_objs.yaml')
     save_dir = os.path.join(save_path, task_suffix, f"obj_s", now_stamp.strftime('%Y-%m-%d_%H:%M:%S'))
     model_name = f"yolo11-{task_suffix}-obj_s.pt"

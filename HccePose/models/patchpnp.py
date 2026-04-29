@@ -155,6 +155,10 @@ class PatchPnPNet(nn.Module):
             coord_2d = x[:, 6:8, :, :]
             coords_3d = (x[:, :6, :, :] - 0.5) * extents.view(bs, 3, 1, 1).repeat(1, 2, 1, 1)
             x = torch.cat([coords_3d, coord_2d], dim=1)
+        elif in_c == 5:
+            coord_2d = x[:, 3:5, :, :]
+            coords_3d = (x[:, :3, :, :] - 0.5) * extents.view(bs, 3, 1, 1)
+            x = torch.cat([coords_3d, coord_2d], dim=1)
         else:
             raise ValueError('Wrong input shape!')
         
