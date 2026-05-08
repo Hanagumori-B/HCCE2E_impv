@@ -42,6 +42,37 @@ def write_csv(filepath, obj_id_l, scene_id_l, img_id_l, r_l, t_l, score_l, time_
     df['time'] = df.groupby(['scene_id', 'im_id'])['time'].transform('sum')
     df.to_csv(filepath, index=False)
 
+
+class ObjIDWrapperDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, obj_id, use_gt_bbox=True):
+        self.dataset = dataset
+        self.obj_id = obj_id
+        self.use_gt_bbox = use_gt_bbox
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        # 获取原数据
+        data = self.dataset[idx]
+        if self.use_gt_bbox:
+            # bbox_2D 为 None 时，底层返回 8 个值。手动补齐后 3 个元数据。
+            scene_id, image_id = self.get_meta(idx)
+            score = 1.0  # GT 默认 score 为 1.0
+            return (*data, scene_id, image_id, score, self.obj_id)
+        else:
+            # bbox_2D 不为 None 时，底层已经返回了 11 个值，直接追加 obj_id 即可
+            return (*data, self.obj_id)
+            
+    def get_meta(self, idx):
+        inner_ds = self.dataset 
+        obj_key = 'obj_%s' % str(inner_ds.current_obj_id).rjust(6, '0')
+        info_ = inner_ds.dataset_info['obj_info'][obj_key][idx]
+        scene_id = int(info_['scene'])
+        image_id = int(info_['image'])
+        return scene_id, image_id
+
+
 if __name__ == '__main__':
     np.random.seed(0)
     
@@ -54,8 +85,14 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(sys.argv[0])
     dataset_path = os.path.join(current_dir, '..', 'datasets', dataset_name)
     
-    bbox_2D = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json'
-    # bbox_2D = os.path.join(dataset_path, 'yolo11', 'yolo_detections.json')
+    bbox_2D_path = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json'
+    # bbox_2D_path = os.path.join(dataset_path, 'yolo11', 'yolo_detections.json')
+    
+    use_gt_bbox = True
+    if use_gt_bbox:
+        bbox_2D = None
+    else:
+        bbox_2D = bbox_2D_path
     
     csv_save_path = f'/media/ubuntu/DISK-C/YJP/HCCEPose/output/{dataset_name}/test'
     now_stamp = datetime.now()
@@ -137,14 +174,15 @@ if __name__ == '__main__':
             net.eval()
             
         test_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
-        test_loader = torch.utils.data.DataLoader(test_bop_dataset_back_front_item, batch_size=batch_size, 
+        wrapped_dataset = ObjIDWrapperDataset(test_bop_dataset_back_front_item, obj_id, use_gt_bbox=use_gt_bbox)
+        test_loader = torch.utils.data.DataLoader(wrapped_dataset, batch_size=batch_size, 
                                                 shuffle=False, num_workers=num_workers, drop_last=False) 
         
         rgb_np = cv2.imread(test_bop_dataset_back_front_item.dataset_info['obj_info']['obj_' + str(obj_id).rjust(6, '0')][0]['rgb'])
         
         pred_list = []
         
-        for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_R_m2c, cam_t_m2c, scene_id, image_id, score) in enumerate(test_loader):
+        for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox, cam_K, cam_R_m2c, cam_t_m2c, scene_id, image_id, score, _) in enumerate(test_loader):
             if torch.cuda.is_available():
                 rgb_c=rgb_c.to('cuda:'+CUDA_DEVICE, non_blocking = True)
                 mask_vis_c=mask_vis_c.to('cuda:'+CUDA_DEVICE, non_blocking = True)

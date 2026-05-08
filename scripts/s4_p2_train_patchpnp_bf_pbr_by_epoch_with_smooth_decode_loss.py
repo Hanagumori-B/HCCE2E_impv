@@ -266,8 +266,8 @@ if __name__ == '__main__':
     # `start_obj_id` is the starting object ID, and `end_obj_id` is the ending object ID.
     # 训练的物体 ID 范围。  
     # `start_obj_id` 为起始物体 ID，`end_obj_id` 为终止物体 ID。
-    obj_id_list = [1]
-    # obj_id_list = [1, 2, 3, 4, 5]
+    # obj_id_list = [1]
+    obj_id_list = [2, 3, 4, 5]
     
     # 主干网络类型
     net_name = 'convnext'
@@ -339,7 +339,7 @@ if __name__ == '__main__':
     
     if output_save :
         now_stamp = datetime.now()
-        output_save = os.path.join(output_save, dataset_name, 'pose_estimation2', now_stamp.strftime('%Y-%m-%d_%H:%M:%S'))
+        output_save = os.path.join(output_save, dataset_name, 'pose_estimation3', now_stamp.strftime('%Y-%m-%d_%H:%M:%S'))
         if args.local_rank == 0:
             os.makedirs(output_save, exist_ok=True)
             print('-'*100)
@@ -361,11 +361,15 @@ if __name__ == '__main__':
     np.random.seed(local_rank)
     
     bop_dataset_item = BopDataset(dataset_path, local_rank=local_rank)
-    train_bop_dataset_back_front_item = TrainBopDatasetBF_PnPNet(bop_dataset_item, train_folder_name, padding_ratio=padding_ratio)
+    train_bop_dataset_back_front_item = TrainBopDatasetBF_PnPNet(
+        bop_dataset_item=bop_dataset_item, folder_name=train_folder_name, padding_ratio=padding_ratio, load_gt_bf_c=True
+        )
     
     # ratio = 0.1 means selecting 10% of samples from the dataset for testing.
     # ratio = 0.1 表示从数据集中选择 10% 的样本作为测试数据。
-    test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(bop_dataset_item, val_folder_name, padding_ratio=padding_ratio, ratio=1.0)
+    test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(
+        bop_dataset_item=bop_dataset_item, folder_name=val_folder_name, padding_ratio=padding_ratio, ratio=1.0
+        )
         
     for obj_id in obj_id_list:
         obj_path = bop_dataset_item.obj_model_list[bop_dataset_item.obj_id_list.index(obj_id)]
@@ -632,6 +636,7 @@ if __name__ == '__main__':
                     'output_save': output_save,
                     'loss_factors': loss_factors,
                     'clip_grad': clip_grad,
+                    'smooth_decode_loss_supervision': True,
                     # 'feat_dim': feat_dim,
                 }, f, sort_keys=False)
 
@@ -665,7 +670,7 @@ if __name__ == '__main__':
             log_interval = max(num_batches // log_freq_per_epoch, 1) # 每隔 10% 的进度记录一次
             logs_done_this_epoch = 0
                 
-            for batch_idx, (rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, bbox, cam_K, img_size, cam_R_m2c, cam_t_m2c) in enumerate(train_loader):
+            for batch_idx, (rgb_c, mask_vis_c, GT_Front_c, GT_Back_c, GT_Front_hcce, GT_Back_hcce, bbox, cam_K, img_size, cam_R_m2c, cam_t_m2c) in enumerate(train_loader):
                 B = rgb_c.shape[0]
                 if torch.cuda.is_available():
                     rgb_c=rgb_c.to('cuda:'+CUDA_DEVICE, non_blocking = True)
@@ -677,6 +682,8 @@ if __name__ == '__main__':
                     img_size = img_size.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     cam_R_m2c = cam_R_m2c.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     cam_t_m2c = cam_t_m2c.to('cuda:'+CUDA_DEVICE, non_blocking=True).squeeze(-1)
+                    GT_Front_c = GT_Front_c.to('cuda:'+CUDA_DEVICE, non_blocking=True)
+                    GT_Back_c = GT_Back_c.to('cuda:'+CUDA_DEVICE, non_blocking=True)
                     
                     gt_t_site = trans_to_site_batch(cam_t_m2c, cam_K, bbox)
 
@@ -697,6 +704,7 @@ if __name__ == '__main__':
                         GT_Front_hcce, GT_Back_hcce, mask_vis_c, 
                         cam_R_m2c, gt_t_site, 
                         batch_model_points, net if ide_debug else net.module,
+                        GT_Front_c, GT_Back_c,
                         sym_infos=[sym_infos for _ in range(B)]
                     )
                     

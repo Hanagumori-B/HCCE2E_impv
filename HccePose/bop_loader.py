@@ -1495,8 +1495,9 @@ class TestBopDatasetBFEPro(TestBopDatasetBackFront):
  
 
 class TrainBopDatasetBF_PnPNet(TrainBopDatasetBackFront):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, load_gt_bf_c=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.load_gt_bf_c = load_gt_bf_c
         
     def __getitem__(self, index):
         info_ = self.dataset_info['obj_info']['obj_%s'%str(self.current_obj_id).rjust(6, '0')][index]
@@ -1528,7 +1529,13 @@ class TrainBopDatasetBF_PnPNet(TrainBopDatasetBackFront):
         img_size_tensor = torch.from_numpy(np.array(img_size).astype(np.float32))
         cam_R_tensor = torch.from_numpy(cam_R_m2c.astype(np.float32))
         cam_t_tensor = torch.from_numpy(cam_t_m2c.astype(np.float32))
-        return rgb_c, mask_vis_c, GT_Front_hcce, GT_Back_hcce, Bbox_tensor, cam_K_tensor, img_size_tensor, cam_R_tensor, cam_t_tensor
+        if self.load_gt_bf_c:
+            return (rgb_c, mask_vis_c, GT_Front_c, GT_Back_c, 
+                    GT_Front_hcce, GT_Back_hcce, Bbox_tensor, 
+                    cam_K_tensor, img_size_tensor, cam_R_tensor, cam_t_tensor)
+        return (rgb_c, mask_vis_c, 
+                GT_Front_hcce, GT_Back_hcce, Bbox_tensor, 
+                cam_K_tensor, img_size_tensor, cam_R_tensor, cam_t_tensor)
 
 
 class TestBopDatasetBF_PnPNet(TestBopDatasetBackFront):

@@ -53,7 +53,8 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(sys.argv[0])
     dataset_path = os.path.join(current_dir, '..', 'datasets', dataset_name)
     
-    bbox_2D = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json'
+    bbox_2D = None
+    # bbox_2D = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json'
     # bbox_2D = os.path.join(dataset_path, 'yolo11', 'yolo_detections.json')
     
     csv_save_path = f'/media/ubuntu/DISK-C/YJP/HCCEPose/output/{dataset_name}/test'
@@ -69,8 +70,8 @@ if __name__ == '__main__':
         1: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_01/best_score/',
         2: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_02/best_score/',
         3: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_03/best_score/',
-        4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-20_21:34:15/obj_04/best_score/',
-        5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-21_15:46:44/obj_05/best_score/',
+        4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_04/best_score/',
+        5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_05/best_score/',
     }
     
     CUDA_DEVICE = '0'

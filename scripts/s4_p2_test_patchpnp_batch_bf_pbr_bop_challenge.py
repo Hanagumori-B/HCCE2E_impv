@@ -73,9 +73,10 @@ class MultiObjectPoseNet(torch.nn.Module):
 
 
 class ObjIDWrapperDataset(torch.utils.data.Dataset):
-        def __init__(self, dataset, obj_id):
+        def __init__(self, dataset, obj_id, use_gt_bbox=False):
             self.dataset = dataset
             self.obj_id = obj_id
+            self.use_gt_bbox = use_gt_bbox 
 
         def __len__(self):
             return len(self.dataset)
@@ -84,7 +85,13 @@ class ObjIDWrapperDataset(torch.utils.data.Dataset):
             # 获取原数据 (返回的是一个长长的 tuple)
             data = self.dataset[idx]
             # 在 tuple 末尾追加类别 id
-            return (*data, self.obj_id)
+            if self.use_gt_bbox:
+                # 补齐scene, image, score
+                scene_id, image_id = self.get_meta(idx)
+                score = 1.0  # Ground Truth 可见区域数据的默认置信度设为 1.0
+                return (*data, scene_id, image_id, score, self.obj_id)
+            else:
+                return (*data, self.obj_id)
         
         def get_meta(self, idx):
             inner_ds = self.dataset 
@@ -168,7 +175,12 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(sys.argv[0])
     dataset_path = os.path.join(current_dir, '..', 'datasets', dataset_name)
     
-    bbox_2D = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json'
+    use_gt_bbox = True
+    
+    if use_gt_bbox:
+        bbox_2D = None
+    else:
+        bbox_2D = '/media/ubuntu/DISK-C/YJP/HCCEPose/datasets/grabv1/test/gt_bbox2d.json'
     # bbox_2D = os.path.join(dataset_path, 'yolo11', 'yolo_detections.json')
     
     csv_save_path = f'/media/ubuntu/DISK-C/YJP/HCCEPose/output/{dataset_name}/test'
@@ -184,8 +196,8 @@ if __name__ == '__main__':
         1: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_01/best_score/',
         2: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_02/best_score/',
         3: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_03/best_score/',
-        4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-20_21:34:15/obj_04/best_score/',
-        5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-21_15:46:44/obj_05/best_score/',
+        4: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_04/best_score/',
+        5: '/media/ubuntu/DISK-C/YJP/HCCEPose/output/grabv1/pose_estimation2/2026-04-18_09:52:09/obj_05/best_score/',
     }
     
     CUDA_DEVICE = '0'
@@ -201,10 +213,10 @@ if __name__ == '__main__':
     bop_dataset_item = BopDataset(dataset_path)
     
     print(dataset_path)
-    if bbox_2D is not None:
-        test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(bop_dataset_item, dataset_folder_name, padding_ratio=padding_ratio, bbox_2D=bbox_2D)
-    else:
-        test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(bop_dataset_item, dataset_folder_name, padding_ratio=padding_ratio)
+    # if bbox_2D is not None:
+    #     test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(bop_dataset_item, dataset_folder_name, padding_ratio=padding_ratio, bbox_2D=bbox_2D)
+    # else:
+    #     test_bop_dataset_back_front_item = TestBopDatasetBF_PnPNet(bop_dataset_item, dataset_folder_name, padding_ratio=padding_ratio)
 
 
     hcce_list_dict = {}
@@ -248,7 +260,7 @@ if __name__ == '__main__':
         ds_item.update_obj_id(obj_id, obj_path)
         
         # 包装并放入列表
-        wrapped_datasets.append(ObjIDWrapperDataset(ds_item, obj_id))
+        wrapped_datasets.append(ObjIDWrapperDataset(ds_item, obj_id, use_gt_bbox))
         
         # test_bop_dataset_back_front_item.update_obj_id(obj_id, obj_path)
         # test_loader = torch.utils.data.DataLoader(test_bop_dataset_back_front_item, batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=False) 

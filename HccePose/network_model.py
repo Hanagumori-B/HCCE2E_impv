@@ -406,20 +406,26 @@ class HccePose_PatchPnP_Loss(HccePose_Loss):
     def forward(self, pred_front, pred_back, pred_mask, 
                 pred_rot_6d, pred_t_site, 
                 pred_coords_f, pred_coords_b,
-                gt_front, gt_back, gt_mask, 
+                gt_front_encoded, gt_back_encoded, gt_mask, 
                 gt_rot_mat, gt_t_site, 
                 model_points, net_ref, 
-                cam_K=None, Bbox=None, s_zoom=None, 
+                gt_front_original=None, gt_back_original=None, 
                 sym_infos=None
                 ):
-        base_losses = super().forward(pred_front, pred_back, pred_mask, gt_front, gt_back, gt_mask)
+        base_losses = super().forward(pred_front, pred_back, pred_mask, gt_front_encoded, gt_back_encoded, gt_mask)
         
         B = pred_front.shape[0]
         
-        gt_f_permuted = gt_front.permute(0, 2, 3, 1)
-        gt_b_permuted = gt_back.permute(0, 2, 3, 1)
-        gt_coords_f = net_ref.hcce_decode(gt_f_permuted).permute(0, 3, 1, 2).detach() / 255.0
-        gt_coords_b = net_ref.hcce_decode(gt_b_permuted).permute(0, 3, 1, 2).detach() / 255.0
+        gt_f_permuted = gt_front_encoded.permute(0, 2, 3, 1)
+        gt_b_permuted = gt_back_encoded.permute(0, 2, 3, 1)
+        if gt_front_original is None:
+            gt_coords_f = net_ref.hcce_decode(gt_f_permuted).permute(0, 3, 1, 2).detach() / 255.0
+        else:
+            gt_coords_f = gt_front_original.permute(0, 3, 1, 2).detach() / 255.0
+        if gt_back_original is None:
+            gt_coords_b = net_ref.hcce_decode(gt_b_permuted).permute(0, 3, 1, 2).detach() / 255.0
+        else:
+            gt_coords_b = gt_back_original.permute(0, 3, 1, 2).detach() / 255.0
         target_mask = gt_mask.float()
         if target_mask.dim() == 3:
             target_mask = target_mask.unsqueeze(1)
